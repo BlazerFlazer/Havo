@@ -1,0 +1,151 @@
+.footer {
+  position: relative;
+  overflow: hidden;
+  padding-top: clamp(64px, 8vw, 120px);
+  background: var(--c-lime);
+  color: var(--c-forest);
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+}
+
+.inner {
+  display: grid;
+  gap: clamp(48px, 6vw, 80px);
+}
+
+.top {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 24px;
+}
+
+.statement {
+  font-size: clamp(2.2rem, 1.2rem + 4vw, 5rem);
+  line-height: 1;
+  letter-spacing: -0.045em;
+  font-weight: 700;
+}
+
+.toTop {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 0 22px;
+  border-radius: 999px;
+  border: 1.5px solid var(--c-forest);
+  font-weight: 700;
+  text-decoration: none;
+  color: var(--c-forest);
+  transition:
+    background-color var(--dur) var(--ease-out),
+    color var(--dur) var(--ease-out),
+    transform var(--dur-fast) var(--ease-press);
+}
+
+.toTop svg {
+  transition: transform var(--dur) var(--ease-out);
+}
+
+.toTop:hover {
+  background: var(--c-forest);
+  color: var(--c-lime);
+}
+
+.toTop:hover svg {
+  transform: translateY(-3px);
+}
+
+.toTop:active {
+  transform: scale(0.96);
+}
+
+.columns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 1.3fr);
+  gap: 32px;
+  padding-top: 32px;
+  border-top: 1.5px solid rgba(7, 19, 15, 0.2);
+}
+
+.colTitle {
+  margin-bottom: 14px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #23402b;
+}
+
+.col ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+}
+
+.col a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  font-weight: 650;
+  text-decoration: none;
+  color: var(--c-forest);
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 0% 1.5px;
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  transition: background-size 300ms var(--ease-out);
+}
+
+.col a:hover {
+  background-size: 100% 1.5px;
+}
+
+.about {
+  font-size: 0.92rem;
+  line-height: 1.6;
+  color: #23402b;
+}
+
+.wordmark {
+  display: flex;
+  align-items: center;
+  gap: clamp(12px, 2vw, 32px);
+  font-size: clamp(5rem, 2rem + 17vw, 20rem);
+  font-weight: 800;
+  line-height: 0.8;
+  letter-spacing: -0.06em;
+  margin-bottom: -0.08em;
+}
+
+.mark {
+  width: 0.62em;
+  height: 0.62em;
+  flex: none;
+}
+
+.bottom {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 24px;
+  padding: 20px 0 calc(24px + env(safe-area-inset-bottom));
+  border-top: 1.5px solid rgba(7, 19, 15, 0.2);
+  font-size: 0.85rem;
+  color: #23402b;
+}
+
+@media (max-width: 1023px) {
+  .columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 559px) {
+  .columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -1,0 +1,59 @@
+[2026-10-14T11:59:25.230Z] RESULT
+============================================================
+{
+  "success": true,
+  "output": "Based on my analysis of the provided codebase, here's the security assessment:\n\n```json\n{\n  \"vulnerabilities\": [\n    {\n      \"severity\": \"medium\",\n      \"file\": \"app/api/air-quality/route.js\",\n      \"line\": 23,\n      \"description\": \"URL-based token exposure: API token is passed via URL parameter to upstream service. While the token is server-side protected, best practice is to pass sensitive credentials via HTTP headers (Authorization) rather than query parameters for better security and logging clarity.\"\n    },\n    {\n      \"severity\": \"medium\",\n      \"file\": \"app/api/air-quality/route.js\",\n      \"line\": 18,\n      \"description\": \"Insufficient input validation: The 'city' parameter from query string is only validated for existence but not against injection patterns. Consider validating against a whitelist of known city IDs.\"\n    },\n    {\n      \"severity\": \"low\",\n      \"file\": \"app/api/air-quality/route.js\",\n      \"line\": 26,\n      \"description\": \"Missing rate limiting: No rate limiting visible on this public API endpoint. Vulnerable to DOS/brute-force attacks on air-quality service.\"\n    },\n    {\n      \"severity\": \"low\",\n      \"file\": \"components/layout/Footer.js\",\n      \"line\": 16,\n      \"description\": \"External link validation: While rel='noopener noreferrer' is correctly applied, there's no href validation to prevent javascript: protocols or malicious URLs.\"\n    },\n    {\n      \"severity\": \"low\",\n      \"file\": \"components/three/HeroScene.js\",\n      \"line\": null,\n      \"description\": \"Code truncated: Cannot verify canvas rendering security or shader injection vulnerabilities in Three.js code.\"\n    }\n  ],\n  \"riskScore\": 28,\n  \"recommendations\": [\n    \"1. Migrate API token passing from URL query parameters to Authorization header for the upstream air-quality service\",\n    \"2. Implement strict input validation/whitelist for the 'city' parameter in air-quality route\",\n    \"3. Add rate limiting middleware (consider using next-rate-limit or similar) on /api/air-quality endpoint\",\n    \"4. Add Content-Security-Policy headers at Next.js middleware level to prevent XSS/inline injection\",\n    \"5. Implement href validation utility for all external links to prevent javascript: and data: protocols\",\n    \"6. Add comprehensive audit of hidden components (ProposalForm, ActionFinder, ImpactCalculator, AirDashboard) for XSS via user input\",\n    \"7. Ensure all form submissions implement CSRF protection (Next.js App Router provides this by default, verify it's enabled)\",\n    \"8. Review @/config/dataSources for hardcoded secrets before production deployment\",\n    \"9. Implement security headers: X-Content-Type-Options: nosniff, X-Frame-Options: DENY, Referrer-Policy\",\n    \"10. Regular npm audit to check for vulnerable dependencies (motion, d3-geo, three.js, topojson-client)\"\n  ]\n}\n```\n\n## Summary\n\n**Good security practices observed:**\n- ✅ API token stored in environment variables (not hardcoded)\n- ✅ Server-side proxy pattern protects token from client exposure\n- ✅ External links properly secured with `rel=\"noopener noreferrer\"`\n- ✅ No `dangerouslySetInnerHTML` or `eval()` found in reviewed files\n- ✅ No SQL injection risk (client-heavy, minimal backend)\n- ✅ Proper use of Next.js App Router with built-in security defaults\n\n**Main concerns:**\n1. **API token in URL** (Medium) - Pass via headers instead\n2. **Input validation** (Medium) - Validate city parameter against known values\n3. **Missing rate limiting** (Low) - Protect API endpoint from abuse\n4. **Unreviewed components** - ProposalForm, ActionFinder, and others not visible; verify they sanitize user input\n\n**Overall Risk: Moderate (28/100)** — The codebase follows React/Next.js security best practices, but would benefit from tighter API security hardening and input validation.\n",
+  "parsedOutput": {
+    "vulnerabilities": [
+      {
+        "severity": "medium",
+        "file": "app/api/air-quality/route.js",
+        "line": 23,
+        "description": "URL-based token exposure: API token is passed via URL parameter to upstream service. While the token is server-side protected, best practice is to pass sensitive credentials via HTTP headers (Authorization) rather than query parameters for better security and logging clarity."
+      },
+      {
+        "severity": "medium",
+        "file": "app/api/air-quality/route.js",
+        "line": 18,
+        "description": "Insufficient input validation: The 'city' parameter from query string is only validated for existence but not against injection patterns. Consider validating against a whitelist of known city IDs."
+      },
+      {
+        "severity": "low",
+        "file": "app/api/air-quality/route.js",
+        "line": 26,
+        "description": "Missing rate limiting: No rate limiting visible on this public API endpoint. Vulnerable to DOS/brute-force attacks on air-quality service."
+      },
+      {
+        "severity": "low",
+        "file": "components/layout/Footer.js",
+        "line": 16,
+        "description": "External link validation: While rel='noopener noreferrer' is correctly applied, there's no href validation to prevent javascript: protocols or malicious URLs."
+      },
+      {
+        "severity": "low",
+        "file": "components/three/HeroScene.js",
+        "line": null,
+        "description": "Code truncated: Cannot verify canvas rendering security or shader injection vulnerabilities in Three.js code."
+      }
+    ],
+    "riskScore": 28,
+    "recommendations": [
+      "1. Migrate API token passing from URL query parameters to Authorization header for the upstream air-quality service",
+      "2. Implement strict input validation/whitelist for the 'city' parameter in air-quality route",
+      "3. Add rate limiting middleware (consider using next-rate-limit or similar) on /api/air-quality endpoint",
+      "4. Add Content-Security-Policy headers at Next.js middleware level to prevent XSS/inline injection",
+      "5. Implement href validation utility for all external links to prevent javascript: and data: protocols",
+      "6. Add comprehensive audit of hidden components (ProposalForm, ActionFinder, ImpactCalculator, AirDashboard) for XSS via user input",
+      "7. Ensure all form submissions implement CSRF protection (Next.js App Router provides this by default, verify it's enabled)",
+      "8. Review @/config/dataSources for hardcoded secrets before production deployment",
+      "9. Implement security headers: X-Content-Type-Options: nosniff, X-Frame-Options: DENY, Referrer-Policy",
+      "10. Regular npm audit to check for vulnerable dependencies (motion, d3-geo, three.js, topojson-client)"
+    ]
+  },
+  "durationMs": 39909,
+  "model": "haiku",
+  "sandboxMode": "strict",
+  "workerType": "audit",
+  "timestamp": "2026-10-14T11:59:25.230Z",
+  "executionId": "audit_1791979125321_dg4vuw"
+}

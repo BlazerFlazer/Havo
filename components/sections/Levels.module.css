@@ -1,0 +1,6 @@
+.section {
+  overflow: hidden;
+  background:
+    radial-gradient(50% 60% at 20% 60%, rgba(184, 243, 107, 0.07), transparent 70%),
+    var(--surface-0);
+}

@@ -1,0 +1,70 @@
+[2026-10-14T11:22:16.716Z] [INFO] Scheduled map (interval: 900s, first run in 0s)
+[2026-10-14T11:22:16.717Z] [INFO] Scheduled audit (interval: 600s, first run in 120s)
+[2026-10-14T11:22:16.717Z] [INFO] Scheduled optimize (interval: 900s, first run in 240s)
+[2026-10-14T11:22:16.718Z] [INFO] Scheduled consolidate (interval: 1800s, first run in 360s)
+[2026-10-14T11:22:16.718Z] [INFO] Scheduled testgaps (interval: 1200s, first run in 480s)
+[2026-10-14T11:22:16.719Z] [INFO] Scheduled backup (interval: 86400s, first run in 600s)
+[2026-10-14T11:22:16.719Z] [INFO] Scheduled harness (interval: 21600s, first run in 720s)
+[2026-10-14T11:22:16.721Z] [INFO] Lifecycle monitor active (ttl=43200s)
+[2026-10-14T11:22:16.725Z] [INFO] Daemon started (PID: 14332, CPUs: 12, workers: 7, maxCpuLoad: 9.600000000000001, minFreeMemoryPercent: 10%)
+[2026-10-14T11:22:16.726Z] [INFO] Claude Code headless mode available - AI workers enabled
+[2026-10-14T11:22:16.730Z] [INFO] Starting worker: map (1/2 concurrent)
+[2026-10-14T11:22:16.737Z] [INFO] Worker map completed in 9ms
+[2026-10-14T11:24:16.738Z] [INFO] Starting worker: audit (1/2 concurrent)
+[2026-10-14T11:24:16.740Z] [INFO] Running audit in headless mode (Claude Code AI)
+[2026-10-14T11:25:50.910Z] [INFO] Worker audit completed in 94177ms
+[2026-10-14T11:26:16.724Z] [INFO] Starting worker: optimize (1/2 concurrent)
+[2026-10-14T11:26:16.724Z] [INFO] Running optimize in headless mode (Claude Code AI)
+[2026-10-14T11:28:16.733Z] [INFO] Starting worker: consolidate (2/2 concurrent)
+[2026-10-14T11:28:16.738Z] [INFO] Consolidate worker: distillation skipped (no-db)
+[2026-10-14T11:28:16.743Z] [INFO] Worker consolidate completed in 15ms
+[2026-10-14T11:29:22.599Z] [INFO] Worker optimize completed in 185877ms
+[2026-10-14T11:30:16.733Z] [INFO] Starting worker: testgaps (1/2 concurrent)
+[2026-10-14T11:30:16.735Z] [INFO] Running testgaps in headless mode (Claude Code AI)
+[2026-10-14T11:32:16.731Z] [INFO] Starting worker: backup (2/2 concurrent)
+[2026-10-14T11:32:16.737Z] [INFO] Worker backup completed in 12ms
+[2026-10-14T11:34:16.727Z] [INFO] Starting worker: harness (2/2 concurrent)
+[2026-10-14T11:34:17.679Z] [INFO] Worker harness completed in 953ms
+[2026-10-14T11:34:33.133Z] [INFO] Worker testgaps completed in 256405ms
+[2026-10-14T11:35:50.922Z] [INFO] Starting worker: audit (1/2 concurrent)
+[2026-10-14T11:35:50.923Z] [INFO] Running audit in headless mode (Claude Code AI)
+[2026-10-14T11:37:16.745Z] [INFO] Starting worker: map (2/2 concurrent)
+[2026-10-14T11:37:16.747Z] [INFO] Worker map completed in 4ms
+[2026-10-14T11:37:44.352Z] [INFO] Worker audit completed in 113435ms
+[2026-10-14T11:44:22.605Z] [INFO] Starting worker: optimize (1/2 concurrent)
+[2026-10-14T11:44:22.606Z] [INFO] Running optimize in headless mode (Claude Code AI)
+[2026-10-14T11:47:44.367Z] [INFO] Starting worker: audit (2/2 concurrent)
+[2026-10-14T11:47:44.368Z] [INFO] Running audit in headless mode (Claude Code AI)
+[2026-10-14T11:47:49.379Z] [INFO] Worker optimize completed in 206776ms
+[2026-10-14T11:48:45.312Z] [INFO] Worker audit completed in 60948ms
+[2026-10-14T11:52:16.765Z] [INFO] Starting worker: map (1/2 concurrent)
+[2026-10-14T11:52:16.771Z] [INFO] Worker map completed in 11ms
+[2026-10-14T11:54:33.150Z] [INFO] Starting worker: testgaps (1/2 concurrent)
+[2026-10-14T11:54:33.151Z] [INFO] Running testgaps in headless mode (Claude Code AI)
+[2026-10-14T11:58:16.757Z] [INFO] Starting worker: consolidate (2/2 concurrent)
+[2026-10-14T11:58:16.758Z] [INFO] Consolidate worker: distillation skipped (no-db)
+[2026-10-14T11:58:16.759Z] [INFO] Worker consolidate completed in 6ms
+[2026-10-14T11:58:45.320Z] [INFO] Starting worker: audit (2/2 concurrent)
+[2026-10-14T11:58:45.321Z] [INFO] Running audit in headless mode (Claude Code AI)
+[2026-10-14T11:59:00.278Z] [INFO] Worker testgaps completed in 267132ms
+[2026-10-14T11:59:25.232Z] [INFO] Worker audit completed in 39915ms
+[2026-10-14T12:02:49.399Z] [INFO] Starting worker: optimize (1/2 concurrent)
+[2026-10-14T12:02:49.401Z] [INFO] Running optimize in headless mode (Claude Code AI)
+[2026-10-14T12:06:00.081Z] [INFO] Worker optimize completed in 190687ms
+[2026-10-14T12:07:16.790Z] [INFO] Starting worker: map (1/2 concurrent)
+[2026-10-14T12:07:16.792Z] [INFO] Worker map completed in 3ms
+[2026-10-14T12:09:25.239Z] [INFO] Starting worker: audit (1/2 concurrent)
+[2026-10-14T12:09:25.241Z] [INFO] Running audit in headless mode (Claude Code AI)
+[2026-10-14T12:10:09.401Z] [INFO] Worker audit completed in 44166ms
+[2026-10-14T12:19:00.289Z] [INFO] Starting worker: testgaps (1/2 concurrent)
+[2026-10-14T12:19:00.291Z] [INFO] Running testgaps in headless mode (Claude Code AI)
+[2026-10-14T12:20:09.408Z] [INFO] Starting worker: audit (2/2 concurrent)
+[2026-10-14T12:20:09.410Z] [INFO] Running audit in headless mode (Claude Code AI)
+[2026-10-14T12:20:51.263Z] [INFO] Worker audit completed in 41858ms
+[2026-10-14T12:21:00.096Z] [INFO] Starting worker: optimize (2/2 concurrent)
+[2026-10-14T12:21:00.097Z] [INFO] Running optimize in headless mode (Claude Code AI)
+[2026-10-14T12:22:16.801Z] [INFO] Worker map deferred: max concurrent (2) reached
+[2026-10-14T12:23:21.063Z] [INFO] Worker testgaps completed in 260779ms
+[2026-10-14T12:23:21.068Z] [INFO] Starting worker: map (2/2 concurrent)
+[2026-10-14T12:23:21.072Z] [INFO] Worker map completed in 5ms
+[2026-10-14T12:23:41.441Z] [INFO] Worker optimize completed in 161349ms

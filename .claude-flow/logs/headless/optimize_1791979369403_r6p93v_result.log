@@ -1,0 +1,84 @@
+[2026-10-14T12:06:00.076Z] RESULT
+============================================================
+{
+  "success": true,
+  "output": "I reviewed the full app (`app/`, `components/`, `features/`, `hooks/`, `lib/`, `data/`). It's a Next.js client-rendered site with **no database** — so classic \"N+1 query\" patterns don't apply literally, but there are equivalent anti-patterns (repeated linear scans instead of lookups) plus real React re-render and redundant-computation issues. Here's what I found, grouped by your five categories.\n\n## 1. N+1-style patterns (no DB — closest equivalents: repeated scans / repeated network hops)\n\n**`app/api/air-quality/route.js`** is the only network endpoint; it fetches once per request, so no N+1 there. The real equivalent pattern is **linear `.find()` calls inside `.map()` loops**, repeated once per rendered row instead of being looked up once:\n\n```js\n// features/actions/ActionFinder.js:134 — scans ACTION_CATEGORIES for every result row\n{ACTION_CATEGORIES.find((c) => c.id === action.category)?.label}\n\n// features/quiz/Quiz.js:112 — scans QUIZ for every wrong answer\nconst question = QUIZ.find((x) => x.id === m.id);\n```\n\nHarmless today (tiny arrays), but it's the same shape of bug as a DB N+1 — cost grows with both the outer list and the inner table. Fix with a `Map` built once:\n\n```js\n// finder.js or module scope\nconst CATEGORY_BY_ID = new Map(ACTION_CATEGORIES.map((c) => [c.id, c]));\n// ...\nCATEGORY_BY_ID.get(action.category)?.label\n```\n\n## 2. Unnecessary React re-renders\n\n**`features/actions/ActionFinder.js:29`** — the real bug of the review:\n\n```js\nconst results = submitted ? recommendActions(submitted) : null;\n```\n\n`recommendActions` filters/scores/sorts all of `ACTIONS` **on every render**, including every time the user drags a `ChoiceGroup` answer *before* hitting submit — because `answers` and `submitted` are state in the same component, so any answer change re-renders `ActionFinder` and recomputes results for the unchanged `submitted` value. Fix:\n\n```js\nconst results = useMemo(() => (submitted ? recommendActions(submitted) : null), [submitted]);\n```\n\nSame file, line 124 — `JSON.stringify(submitted)` is re-run **once per result row** for an identical value:\n\n```js\nkey={`${action.id}-${JSON.stringify(submitted)}`}\n```\nHoist it: `const submittedKey = JSON.stringify(submitted);` outside the `.map`.\n\n**`components/layout/Header.js`** — `PlanLink` (rendered twice: desktop nav line 136, mobile menu line 80) calls `useHavoState()` and derives `plan.filter(...)`. Because `useHavoState` subscribes to the *entire* progress store, **any** dispatch anywhere in the app (toggling a quiz answer, editing a plan note, bumping the weekly goal) re-renders every subscriber — `Header`, `ProgressDashboard`, `Quiz`, `Planner` — even when their slice of state didn't change. This is the single biggest re-render amplifier in the codebase. A selector-based subscription would help:\n\n```js\n// store.js\nexport function useHavoSelector(selector) {\n  return useSyncExternalStore(subscribe, () => selector(getSnapshot()), () => selector(INITIAL_STATE));\n}\n// Header.js\nconst openCount = useHavoSelector((s) => s.plan.filter((p) => !p.completedAt).length);\n```\n\n**`features/planner/Planner.js:144-152`** — `open`, `done`, `upcoming` are filtered/sorted on every render without `useMemo`. Low-impact at typical plan sizes, but it's unmemoized derived state computed on every parent re-render (see Header point above — a quiz dispatch currently re-renders `Planner` too).\n\n## 3. Caching opportunities\n\n**`features/progress/progress.js`** — `computeStreak(history)` is called **twice per render** of `ProgressDashboard`: once directly in `Stats` (line 55) and once inside the `'steady'` badge's `progress()` fn (line 351, called from `Badges` → `computeBadges`). Both scan the same `state.history`. Memoize once and reuse:\n\n```js\n// ProgressDashboard.js\nconst streak = useMemo(() => computeStreak(state.history), [state.history]);\n```\nand pass it into `computeBadges`/`Badges` instead of recomputing.\n\n**`app/api/air-quality/route.js`** — every response sets `Cache-Control: no-store`, including successful `status: 'ok'` payloads, while the *upstream* fetch is cached via `next: { revalidate }`. That means every visitor's request is a fresh hop to your own server (with normalization work re-run) even though the normalized payload is identical for all visitors querying the same city within the revalidate window. If freshness tolerance allows it, cache the response itself:\n\n```js\nconst json = (body, status, cacheSeconds = 0) =>\n  Response.json(body, {\n    status,\n    headers: { 'Cache-Control': cacheSeconds ? `public, s-maxage=${cacheSeconds}, stale-while-revalidate=60` : 'no-store' },\n  });\n```\n(Keep `no-store` for error/unconfigured states — only cache `ok`/`no-station`/`no-data`.)\n\n## 4. Memory leaks\n\nGood news: I checked every `addEventListener`, `setTimeout`, `requestAnimationFrame`, `ResizeObserver`, and `IntersectionObserver` in the codebase (`hooks/useInViewport.js`, `useMediaQuery.js`, `useActiveSection.js`, `useDialogBehavior.js`, `components/canvas/AtmosphereField.js`, `features/problem/InversionLab.js`, `components/sections/Hero.js`, `features/impact/IsoBars.js`, `features/progress/store.js`) — **all of them clean up correctly** in effect-return functions or abort controllers. No leaks found.\n\nOne low-severity nit: **`components/three/HeroScene.js:365`**\n```js\ngl.domElement.addEventListener('webglcontextlost', (e) => { ... });\n```\nis never explicitly removed. It's harmless (the canvas element and its listeners are GC'd when R3F tears down the `<Canvas>`), but it's inconsistent with the rest of the codebase's explicit-cleanup style — worth a comment if intentional.\n\n## 5. Redundant computations\n\n- **`ActionFinder.js:29`** (see §2) — full re-score/sort of `ACTIONS` on irrelevant re-renders.\n- **`progress.js` `computeStreak`** called twice per render (see §3).\n- **`ProgressDashboard.js`** — `Stats`, `Badges`, `Milestones` each call their selector functions directly in the render body with no `useMemo`, so every one of `planStats`, `computePoints`, `computeStreak`, `completionsInWeek`, `computeBadges` reruns on *every* re-render of `ProgressDashboard`, not just when `state` changes (compounded by the Header-triggered re-renders in §2).\n- **`Planner.js`** — `open`/`done`/`upcoming` filter+sort redone every render (see §2).\n\n### Priority fixes\n1. `useMemo` the `recommendActions` call in `ActionFinder.js` — real, user-visible waste on every slider drag.\n2. Split `useHavoState()` into selector-based subscriptions (or at least memoize `PlanLink`'s derived count) — reduces cross-feature re-render cascades.\n3. Memoize `computeStreak`/selectors in `ProgressDashboard.js` and reuse the result instead of calling twice.\n4. Swap the two `.find()`-in-`.map()` lookups for `Map`s — cheap insurance as `data/actions.js`/`data/quiz.js` grow.\n",
+  "parsedOutput": {
+    "sections": [
+      {
+        "title": "1. N+1-style patterns (no DB — closest equivalents: repeated scans / repeated network hops)",
+        "content": "\n**`app/api/air-quality/route.js`** is the only network endpoint; it fetches once per request, so no N+1 there. The real equivalent pattern is **linear `.find()` calls inside `.map()` loops**, repeated once per rendered row instead of being looked up once:\n\n```js\n// features/actions/ActionFinder.js:134 — scans ACTION_CATEGORIES for every result row\n{ACTION_CATEGORIES.find((c) => c.id === action.category)?.label}\n\n// features/quiz/Quiz.js:112 — scans QUIZ for every wrong answer\nconst question = QUIZ.find((x) => x.id === m.id);\n```\n\nHarmless today (tiny arrays), but it's the same shape of bug as a DB N+1 — cost grows with both the outer list and the inner table. Fix with a `Map` built once:\n\n```js\n// finder.js or module scope\nconst CATEGORY_BY_ID = new Map(ACTION_CATEGORIES.map((c) => [c.id, c]));\n// ...\nCATEGORY_BY_ID.get(action.category)?.label\n```\n\n",
+        "level": 2
+      },
+      {
+        "title": "2. Unnecessary React re-renders",
+        "content": "\n**`features/actions/ActionFinder.js:29`** — the real bug of the review:\n\n```js\nconst results = submitted ? recommendActions(submitted) : null;\n```\n\n`recommendActions` filters/scores/sorts all of `ACTIONS` **on every render**, including every time the user drags a `ChoiceGroup` answer *before* hitting submit — because `answers` and `submitted` are state in the same component, so any answer change re-renders `ActionFinder` and recomputes results for the unchanged `submitted` value. Fix:\n\n```js\nconst results = useMemo(() => (submitted ? recommendActions(submitted) : null), [submitted]);\n```\n\nSame file, line 124 — `JSON.stringify(submitted)` is re-run **once per result row** for an identical value:\n\n```js\nkey={`${action.id}-${JSON.stringify(submitted)}`}\n```\nHoist it: `const submittedKey = JSON.stringify(submitted);` outside the `.map`.\n\n**`components/layout/Header.js`** — `PlanLink` (rendered twice: desktop nav line 136, mobile menu line 80) calls `useHavoState()` and derives `plan.filter(...)`. Because `useHavoState` subscribes to the *entire* progress store, **any** dispatch anywhere in the app (toggling a quiz answer, editing a plan note, bumping the weekly goal) re-renders every subscriber — `Header`, `ProgressDashboard`, `Quiz`, `Planner` — even when their slice of state didn't change. This is the single biggest re-render amplifier in the codebase. A selector-based subscription would help:\n\n```js\n// store.js\nexport function useHavoSelector(selector) {\n  return useSyncExternalStore(subscribe, () => selector(getSnapshot()), () => selector(INITIAL_STATE));\n}\n// Header.js\nconst openCount = useHavoSelector((s) => s.plan.filter((p) => !p.completedAt).length);\n```\n\n**`features/planner/Planner.js:144-152`** — `open`, `done`, `upcoming` are filtered/sorted on every render without `useMemo`. Low-impact at typical plan sizes, but it's unmemoized derived state computed on every parent re-render (see Header point above — a quiz dispatch currently re-renders `Planner` too).\n\n",
+        "level": 2
+      },
+      {
+        "title": "3. Caching opportunities",
+        "content": "\n**`features/progress/progress.js`** — `computeStreak(history)` is called **twice per render** of `ProgressDashboard`: once directly in `Stats` (line 55) and once inside the `'steady'` badge's `progress()` fn (line 351, called from `Badges` → `computeBadges`). Both scan the same `state.history`. Memoize once and reuse:\n\n```js\n// ProgressDashboard.js\nconst streak = useMemo(() => computeStreak(state.history), [state.history]);\n```\nand pass it into `computeBadges`/`Badges` instead of recomputing.\n\n**`app/api/air-quality/route.js`** — every response sets `Cache-Control: no-store`, including successful `status: 'ok'` payloads, while the *upstream* fetch is cached via `next: { revalidate }`. That means every visitor's request is a fresh hop to your own server (with normalization work re-run) even though the normalized payload is identical for all visitors querying the same city within the revalidate window. If freshness tolerance allows it, cache the response itself:\n\n```js\nconst json = (body, status, cacheSeconds = 0) =>\n  Response.json(body, {\n    status,\n    headers: { 'Cache-Control': cacheSeconds ? `public, s-maxage=${cacheSeconds}, stale-while-revalidate=60` : 'no-store' },\n  });\n```\n(Keep `no-store` for error/unconfigured states — only cache `ok`/`no-station`/`no-data`.)\n\n",
+        "level": 2
+      },
+      {
+        "title": "4. Memory leaks",
+        "content": "\nGood news: I checked every `addEventListener`, `setTimeout`, `requestAnimationFrame`, `ResizeObserver`, and `IntersectionObserver` in the codebase (`hooks/useInViewport.js`, `useMediaQuery.js`, `useActiveSection.js`, `useDialogBehavior.js`, `components/canvas/AtmosphereField.js`, `features/problem/InversionLab.js`, `components/sections/Hero.js`, `features/impact/IsoBars.js`, `features/progress/store.js`) — **all of them clean up correctly** in effect-return functions or abort controllers. No leaks found.\n\nOne low-severity nit: **`components/three/HeroScene.js:365`**\n```js\ngl.domElement.addEventListener('webglcontextlost', (e) => { ... });\n```\nis never explicitly removed. It's harmless (the canvas element and its listeners are GC'd when R3F tears down the `<Canvas>`), but it's inconsistent with the rest of the codebase's explicit-cleanup style — worth a comment if intentional.\n\n",
+        "level": 2
+      },
+      {
+        "title": "5. Redundant computations",
+        "content": "\n- **`ActionFinder.js:29`** (see §2) — full re-score/sort of `ACTIONS` on irrelevant re-renders.\n- **`progress.js` `computeStreak`** called twice per render (see §3).\n- **`ProgressDashboard.js`** — `Stats`, `Badges`, `Milestones` each call their selector functions directly in the render body with no `useMemo`, so every one of `planStats`, `computePoints`, `computeStreak`, `completionsInWeek`, `computeBadges` reruns on *every* re-render of `ProgressDashboard`, not just when `state` changes (compounded by the Header-triggered re-renders in §2).\n- **`Planner.js`** — `open`/`done`/`upcoming` filter+sort redone every render (see §2).\n\n",
+        "level": 2
+      },
+      {
+        "title": "Priority fixes",
+        "content": "1. `useMemo` the `recommendActions` call in `ActionFinder.js` — real, user-visible waste on every slider drag.\n2. Split `useHavoState()` into selector-based subscriptions (or at least memoize `PlanLink`'s derived count) — reduces cross-feature re-render cascades.\n3. Memoize `computeStreak`/selectors in `ProgressDashboard.js` and reuse the result instead of calling twice.\n4. Swap the two `.find()`-in-`.map()` lookups for `Map`s — cheap insurance as `data/actions.js`/`data/quiz.js` grow.",
+        "level": 3
+      }
+    ],
+    "codeBlocks": [
+      {
+        "language": "js",
+        "code": "// features/actions/ActionFinder.js:134 — scans ACTION_CATEGORIES for every result row\n{ACTION_CATEGORIES.find((c) => c.id === action.category)?.label}\n\n// features/quiz/Quiz.js:112 — scans QUIZ for every wrong answer\nconst question = QUIZ.find((x) => x.id === m.id);"
+      },
+      {
+        "language": "js",
+        "code": "// finder.js or module scope\nconst CATEGORY_BY_ID = new Map(ACTION_CATEGORIES.map((c) => [c.id, c]));\n// ...\nCATEGORY_BY_ID.get(action.category)?.label"
+      },
+      {
+        "language": "js",
+        "code": "const results = submitted ? recommendActions(submitted) : null;"
+      },
+      {
+        "language": "js",
+        "code": "const results = useMemo(() => (submitted ? recommendActions(submitted) : null), [submitted]);"
+      },
+      {
+        "language": "js",
+        "code": "key={`${action.id}-${JSON.stringify(submitted)}`}"
+      },
+      {
+        "language": "js",
+        "code": "// store.js\nexport function useHavoSelector(selector) {\n  return useSyncExternalStore(subscribe, () => selector(getSnapshot()), () => selector(INITIAL_STATE));\n}\n// Header.js\nconst openCount = useHavoSelector((s) => s.plan.filter((p) => !p.completedAt).length);"
+      },
+      {
+        "language": "js",
+        "code": "// ProgressDashboard.js\nconst streak = useMemo(() => computeStreak(state.history), [state.history]);"
+      },
+      {
+        "language": "js",
+        "code": "const json = (body, status, cacheSeconds = 0) =>\n  Response.json(body, {\n    status,\n    headers: { 'Cache-Control': cacheSeconds ? `public, s-maxage=${cacheSeconds}, stale-while-revalidate=60` : 'no-store' },\n  });"
+      },
+      {
+        "language": "js",
+        "code": "gl.domElement.addEventListener('webglcontextlost', (e) => { ... });"
+      }
+    ]
+  },
+  "durationMs": 190672,
+  "model": "sonnet",
+  "sandboxMode": "permissive",
+  "workerType": "optimize",
+  "timestamp": "2026-10-14T12:06:00.075Z",
+  "executionId": "optimize_1791979369403_r6p93v"
+}

@@ -1,0 +1,53 @@
+.root {
+  position: fixed;
+  inset: 0;
+  z-index: 130;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(2, 8, 5, 0.66);
+  backdrop-filter: blur(3px);
+}
+
+.panel {
+  position: relative;
+  width: min(460px, 100%);
+  padding: 28px;
+  border-radius: var(--r-l);
+  background: var(--surface-2);
+  color: var(--fg);
+  box-shadow: var(--shadow-pop);
+  outline: none;
+}
+
+.title {
+  font-size: 1.35rem;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+}
+
+.text {
+  margin-top: 10px;
+  color: var(--fg-muted);
+  line-height: 1.6;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+@media (max-width: 420px) {
+  .actions > * {
+    flex: 1 1 auto;
+  }
+}

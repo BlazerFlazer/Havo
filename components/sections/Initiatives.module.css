@@ -1,0 +1,17 @@
+.section {
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+}
+
+.note {
+  display: inline-flex;
+  padding: 10px 14px;
+  border-radius: var(--r-m);
+  background: var(--warn-soft);
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.form {
+  margin-top: clamp(64px, 8vw, 120px);
+}

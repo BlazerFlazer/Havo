@@ -1,0 +1,1369 @@
+[2026-10-14T11:24:16.847Z] PROMPT
+============================================================
+Analyze this codebase for security vulnerabilities:
+- Check for hardcoded secrets (API keys, passwords)
+- Identify SQL injection risks
+- Find XSS vulnerabilities
+- Check for insecure dependencies
+- Identify authentication/authorization issues
+
+Provide a JSON report with:
+{
+  "vulnerabilities": [{ "severity": "high|medium|low", "file": "...", "line": N, "description": "..." }],
+  "riskScore": 0-100,
+  "recommendations": ["..."]
+}
+
+## Codebase Context
+
+--- app/api/air-quality/route.js ---
+// GET /api/air-quality?city=tashkent
+// Server-side proxy to the optional live air-quality provider. The token stays
+// on the server. Without a token the endpoint answers { status: 'unconfigured' }
+// and the UI shows an honest "no live data" state — never made-up numbers.
+
+import { AIR_QUALITY } from '@/config/dataSources';
+import { getCityById } from '@/data/cities';
+import { normalizeWaqi } from '@/lib/airQuality/waqi';
+
+export const dynamic = 'force-dynamic';
+
+const json = (body, status = 200) =>
+  Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } });
+
+export async function GET(request) {
+  const cityId = new URL(request.url).searchParams.get('city');
+  const city = getCityById(cityId);
+  if (!city) return json({ status: 'error', reason: 'unknown-city' }, 400);
+
+  const token = process.env[AIR_QUALITY.tokenEnvVar];
+  if (!token) return json({ status: 'unconfigured' });
+
+  const url = `${AIR_QUALITY.endpoint}/geo:${city.lat};${city.lon}/?token=${encodeURIComponent(token)}`;
+
+  try {
+    const res = await fetch(url, {
+      next: { revalidate: AIR_QUALITY.revalidateSeconds },
+      signal: AbortSignal.timeout(AIR_QUALITY.requestTimeoutMs),
+    });
+    if (!res.ok) return json({ status: 'error', reason: `upstream-${res.status}` }, 502);
+    const payload = await res.json();
+    const normalized = normalizeWaqi(payload, city, AIR_QUALITY);
+    return json(normalized, normalized.status === 'error' ? 502 : 200);
+  } catch (error) {
+    const reason = error?.name === 'TimeoutError' ? 'timeout' : 'network';
+    return json({ status: 'error', reason }, 502);
+  }
+}
+
+
+--- app/layout.js ---
+// Fonts are bundled from npm (no runtime requests to font CDNs).
+import '@fontsource-variable/manrope';
+import '@fontsource/cormorant-garamond/500-italic.css';
+import '@fontsource/cormorant-garamond/600-italic.css';
+import '@fontsource/jetbrains-mono/400.css';
+import '@fontsource/jetbrains-mono/500.css';
+import './globals.css';
+import { Providers } from '@/components/layout/Providers';
+
+export const metadata = {
+  title: 'HAVO — будущее воздуха в наших руках',
+  description:
+    'Платформа для подростков 13–18 лет: как устроено загрязнение воздуха в Узбекистане и какие реальные шаги можно сделать дома, в школе и в своём районе.',
+  applicationName: 'HAVO',
+  openGraph: {
+    title: 'HAVO — будущее воздуха в наших руках',
+    description: 'Понять проблему, выбрать реальные действия и отслеживать свой вклад в чистый воздух Узбекистана.',
+    locale: 'ru_RU',
+    type: 'website',
+  },
+};
+
+export const viewport = {
+  themeColor: '#07130f',
+  colorScheme: 'dark',
+};
+
+export default function RootLayout({ children }) {
+  return (
+    <html lang="ru">
+      <body>
+        <a href="#main" className="skip-link">
+          Перейти к содержанию
+        </a>
+        <Providers>{children}</Providers>
+      </body>
+    </html>
+  );
+}
+
+
+--- app/page.js ---
+import { Header } from '@/components/layout/Header';
+import { Hero } from '@/components/sections/Hero';
+
+export default function HomePage() {
+  return (
+    <>
+      <Header />
+      <main id="main">
+        <Hero />
+      </main>
+    </>
+  );
+}
+
+
+--- components/layout/Header.js (truncated) ---
+'use client';
+
+import { useCallback, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { AnimatePresence, motion, useMotionValueEvent, useScroll, useSpring } from 'motion/react';
+import { ArrowUpRight, Menu, X } from 'lucide-react';
+import { useActiveSection } from '@/hooks/useActiveSection';
+import { useDialogBehavior } from '@/hooks/useDialogBehavior';
+import { useIsClient } from '@/hooks/useIsClient';
+import { useHavoState } from '@/features/progress/store';
+import { Logo } from './Logo';
+import { NAV_ITEMS, SECTION_TO_NAV } from './navigation';
+import styles from './Header.module.css';
+
+const TRACKED = Object.keys(SECTION_TO_NAV);
+const EASE = [0.22, 1, 0.36, 1];
+
+function PlanLink({ className, onClick }) {
+  const { plan } = useHavoState();
+  const open = plan.filter((p) => !p.completedAt).length;
+  return (
+    <a href="#progress" className={className} onClick={onClick}>
+      <span className={styles.planText}>Мой план</span>
+      <span className={styles.count}>
+        <span className="sr-only">, открытых задач: </span>
+        {open}
+      </span>
+    </a>
+  );
+}
+
+function MobileMenu({ onClose, active }) {
+  const panelRef = useRef(null);
+  useDialogBehavior(panelRef, true, onClose);
+
+  return (
+    <motion.div
+      ref={panelRef}
+      id="mobile-menu"
+      className={styles.mobile}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Меню"
+      tabIndex={-1}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.25 }}
+    >
+      <div className={styles.mobileTop}>
+        <Logo />
+        <button type="button" className={styles.burger} onClick={onClose} aria-label="Закрыть меню">
+          <X size={22} aria-hidden="true" />
+        </button>
+      </div>
+      <nav aria-label="Основная навигация" className={styles.mobileNav}>
+        <ol role="list">
+          {NAV_ITEMS.map((item, i) => (
+            <motion.li
+              key={item.id}
+              initial={{ opacity: 0, y: 24 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.05 + i * 0.05, ease: EASE }}
+            >
+              <a
+                href={`#${item.id}`}
+                onClick={onClose}
+                aria-current={active === item.id ? 'location' : undefined}
+                className={styles.mobileLink}
+              >
+                <span className={styles.mobileIndex}>{String(i + 1).padStart(2, '0')}</span>
+                {item.label}
+                <ArrowUpRight size={22} aria-hidden="true" className={styles.mobileArrow} />
+              </a>
+            </motion.li>
+          ))}
+        </ol>
+      </nav>
+      <div className={styles.mobileBottom}>
+        <PlanLink className={styles.mobilePlan} onClick={onClose} />
+        <p>Для подростков 13–18 лет · Узбекистан</p>
+      </div>
+    </motion.div>
+  );
+}
+
+export function Header() {
+  const [scrolled, setScrolled] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const isClient = useIsClient();
+  const activeSection = useActiveSection(TRACKED);
+  const active = SECTION_TO_NAV[activeSection] ?? 'home';
+
+  const { scrollY, scrollYProgress } = useScroll();
+  const progress = useSpring(scrollYProgress, { stiffness: 220, damping: 40, restDelta: 0.001 });
+  useMotionValueEvent(scrollY, 'change', (v) => setScrolled(v > 24));
+
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
+
+  return (
+    <>
+      <header className={styles.header} data-scrolled={scrolled || undefined}>
+        <div className={styles.inner}>
+          <a href="#home" className={styles.logo} aria-label="HAVO — на главную">
+            <Logo />
+          </a>
+
+          <nav aria-label="Основная навигация" className={styles.nav}>
+            <ul role="list">
+              {NAV_ITEMS.map((item) => {
+                const isActive = active === item.id;
+                return (
+                  <li key={item.id}>
+                    <a
+                      href={`#${item.id}`}
+                      className={styles.link}
+                      data-active={isActive || undefined}
+                      aria-current={isActive ? 'location' : undefined}
+                    >
+                      {isActive && (
+                        <motion.span
+                          layoutId="nav-pill"
+                          className={styles.pill}
+                          transition={{ type: 'spring', stiffness: 420, damping: 36 }}
+                        />
+                      )}
+                      <span className={styles.linkText}>{item.label}</span>
+                    </a>
+                  </li>
+                );
+              })}
+            </ul>
+          </nav>
+
+          <div className={styles.right}>
+            <PlanLink className={styles.plan} />
+            <button
+              type="button"
+              className={styles.burger}
+              onClick={() => setMenuOpen(true)}
+              aria-expand
+
+--- components/layout/Logo.js ---
+/** HAVO mark: a globe crossed by two air currents. */
+export function LogoMark({ size = 28, className }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" className={className} aria-hidden="true">
+      <circle cx="16" cy="16" r="13.5" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M5.5 13.2c3.6-2.6 7.2 2.6 10.8 0s6.6-2.4 10.2 0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M5.5 19.2c3.6-2.6 7.2 2.6 10.8 0s6.6-2.4 10.2 0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function Logo({ className }) {
+  return (
+    <span className={className} style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+      <LogoMark size={28} />
+      <span style={{ fontWeight: 800, letterSpacing: '0.14em', fontSize: '1.02rem' }}>HAVO</span>
+    </span>
+  );
+}
+
+
+--- components/layout/navigation.js ---
+export const NAV_ITEMS = [
+  { id: 'home', label: 'Главная' },
+  { id: 'problem', label: 'Проблема' },
+  { id: 'actions', label: 'Действия' },
+  { id: 'tools', label: 'Инструменты' },
+  { id: 'initiatives', label: 'Инициативы' },
+  { id: 'progress', label: 'Мой вклад' },
+];
+
+// Sections that are tracked for the active-link indicator.
+// 'levels' belongs visually to «Проблема», so it maps to it.
+export const SECTION_TO_NAV = {
+  home: 'home',
+  manifest: 'home',
+  problem: 'problem',
+  levels: 'problem',
+  actions: 'actions',
+  tools: 'tools',
+  initiatives: 'initiatives',
+  progress: 'progress',
+};
+
+
+--- components/layout/Providers.js ---
+'use client';
+
+import { MotionConfig } from 'motion/react';
+import { Toaster } from '@/components/ui/Toaster';
+
+/** Client-side providers: honours prefers-reduced-motion for every motion component. */
+export function Providers({ children }) {
+  return (
+    <MotionConfig reducedMotion="user">
+      {children}
+      <Toaster />
+    </MotionConfig>
+  );
+}
+
+
+--- components/sections/Hero.js ---
+'use client';
+
+import { useEffect, useRef, useState } from 'react';
+import { motion, useScroll } from 'motion/react';
+import { ArrowRight } from 'lucide-react';
+import { HeroVisual } from '@/components/three/HeroVisual';
+import { Button } from '@/components/ui/Button';
+import { SplitHeading } from '@/components/ui/Reveal';
+import { usePrefersReducedMotion } from '@/hooks/useMediaQuery';
+import styles from './Hero.module.css';
+
+const EASE = [0.22, 1, 0.36, 1];
+
+const STEPS = [
+  { href: '#problem', index: '01', title: 'Понять', text: 'откуда берётся грязный воздух' },
+  { href: '#actions', index: '02', title: 'Действовать', text: 'шаги, доступные уже сегодня' },
+  { href: '#progress', index: '03', title: 'Отслеживать', text: 'личный план и прогресс' },
+];
+
+export function Hero() {
+  const sectionRef = useRef(null);
+  const reduced = usePrefersReducedMotion();
+  // null = the visitor has not chosen yet (the intro plays), true/false = explicit choice.
+  const [choice, setChoice] = useState(null);
+  const [introDone, setIntroDone] = useState(false);
+  const { scrollYProgress } = useScroll({ target: sectionRef, offset: ['start start', 'end start'] });
+
+  // Short cinematic intro: the haze clears on its own after a moment.
+  useEffect(() => {
+    const id = setTimeout(() => setIntroDone(true), 2600);
+    return () => clearTimeout(id);
+  }, []);
+
+  const clean = choice ?? (reduced || introDone);
+
+  const fade = (delay) => ({
+    initial: { opacity: 0, y: 18 },
+    animate: { opacity: 1, y: 0 },
+    transition: { duration: 0.9, delay, ease: EASE },
+  });
+
+  return (
+    <section id="home" ref={sectionRef} className={styles.hero} aria-labelledby="hero-title">
+      <HeroVisual cleanTarget={clean ? 1 : 0} scrollProgress={scrollYProgress} />
+      <div className={styles.scrim} aria-hidden="true" />
+      <div className={styles.grain} aria-hidden="true" />
+
+      <div className={styles.inner}>
+        <div className={styles.content}>
+          <motion.p className={styles.audience} {...fade(0.1)}>
+            <span className={styles.pulse} aria-hidden="true" />
+            Для подростков 13–18 лет
+            <span className={styles.audienceSep} aria-hidden="true" />
+            Узбекистан
+          </motion.p>
+
+          <SplitHeading
+            as="h1"
+            id="hero-title"
+            className={`t-display ${styles.title}`}
+            inView={false}
+            delay={0.2}
+            stagger={0.07}
+            parts={[
+              { text: 'Будущее', breakAfter: true },
+              { text: 'воздуха —', breakAfter: true },
+              { text: 'в наших руках.', className: `t-serif ${styles.titleAccent}` },
+            ]}
+          />
+
+          <motion.p className={`t-lead ${styles.lead}`} {...fade(0.75)}>
+            Не нужно ждать, пока мир изменится. Начни с действий, которые доступны тебе уже сегодня.
+          </motion.p>
+
+          <motion.div className={styles.ctas} {...fade(0.9)}>
+            <Button href="#actions" size="lg" icon={ArrowRight}>
+              Найти свой первый шаг
+            </Button>
+            <Button href="#problem" size="lg" variant="secondary">
+              Изучить проблему
+            </Button>
+          </motion.div>
+        </div>
+
+        <motion.div className={styles.rail} {...fade(1.1)}>
+          <ol className={styles.steps} role="list" aria-label="Как устроена платформа">
+            {STEPS.map((step) => (
+              <li key={step.index}>
+                <a href={step.href} className={styles.step}>
+                  <span className={styles.stepIndex}>{step.index}</span>
+                  <span>
+                    <span className={styles.stepTitle}>{step.title}</span>
+                    <span className={styles.stepText}>{step.text}</span>
+                  </span>
+                </a>
+              </li>
+            ))}
+          </ol>
+
+          <div className={styles.atmo}>
+            <div className={styles.toggle} role="group" aria-label="Состояние атмосферы на визуализации">
+              <button type="button" aria-pressed={!clean} onClick={() => setChoice(false)} className={styles.toggleBtn}>
+                Смог
+              </button>
+              <button type="button" aria-pressed={clean} onClick={() => setChoice(true)} className={styles.toggleBtn}>
+                Чистый воздух
+              </button>
+            </div>
+            <p className={styles.atmoNote}>Символическая визуализация, не научная модель</p>
+          </div>
+        </motion.div>
+      </div>
+
+      <p className={styles.brandNote} aria-hidden="true">
+        havo — «воздух» по-узбекски
+      </p>
+    </section>
+  );
+}
+
+
+--- components/three/earthMask.js ---
+// Builds an equirectangular mask texture from Natural Earth data bundled in
+// the `world-atlas` package (no remote assets). Channels:
+//   R = land, G = Uzbekistan, B = country borders.
+// The texture maps directly onto THREE.SphereGeometry UVs.
+
+import { CanvasTexture, LinearFilter, LinearMipmapLinearFilter, NoColorSpace } from 'three';
+import { geoEquirectangular, geoPath } from 'd3-geo';
+import { feature, mesh } from 'topojson-client';
+import countries from 'world-atlas/countries-110m.json';
+
+const UZBEKISTAN_ID = '860'; // ISO 3166-1 numeric
+
+export function createEarthMaskTexture(width = 2048) {
+  const height = width / 2;
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+
+  const projection = geoEquirectangular()
+    .scale(width / (2 * Math.PI))
+    .translate([width / 2, height / 2]);
+  const path = geoPath(projection, ctx);
+
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, width, height);
+  // Additive compositing keeps the three channels independent.
+  ctx.globalCompositeOperation = 'lighter';
+
+  ctx.fillStyle = 'rgb(255,0,0)';
+  ctx.beginPath();
+  path(feature(countries, countries.objects.land));
+  ctx.fill();
+
+  const uzbekistan = feature(countries, countries.objects.countries).features.find((f) => f.id === UZBEKISTAN_ID);
+  if (uzbekistan) {
+    ctx.fillStyle = 'rgb(0,255,0)';
+    ctx.beginPath();
+    path(uzbekistan);
+    ctx.fill();
+  }
+
+  ctx.strokeStyle = 'rgb(0,0,255)';
+  ctx.lineWidth = Math.max(1, width / 1500);
+  ctx.beginPath();
+  path(mesh(countries, countries.objects.countries, (a, b) => a !== b));
+  ctx.stroke();
+
+  const texture = new CanvasTexture(canvas);
+  texture.colorSpace = NoColorSpace; // data texture, not colour
+  texture.minFilter = LinearMipmapLinearFilter;
+  texture.magFilter = LinearFilter;
+  texture.anisotropy = 4;
+  texture.needsUpdate = true;
+  return texture;
+}
+
+/**
+ * Converts latitude/longitude (degrees) to a point on a unit sphere using the
+ * same convention as THREE.SphereGeometry's UV mapping.
+ */
+export function latLonToVector(lat, lon, radius = 1) {
+  const phi = ((lon + 180) / 360) * Math.PI * 2;
+  const theta = ((90 - lat) / 180) * Math.PI;
+  return [
+    -radius * Math.cos(phi) * Math.sin(theta),
+    radius * Math.cos(theta),
+    radius * Math.sin(phi) * Math.sin(theta),
+  ];
+}
+
+export const TASHKENT = { lat: 41.2995, lon: 69.2401 };
+
+
+--- components/three/HeroScene.js (truncated) ---
+'use client';
+
+// Cinematic hero globe (React Three Fiber). Loaded lazily by HeroVisual and
+// never rendered on the server. All text and controls live outside the canvas.
+
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { Html, PerformanceMonitor } from '@react-three/drei';
+import {
+  AdditiveBlending,
+  BackSide,
+  BufferAttribute,
+  BufferGeometry,
+  MathUtils,
+  NormalBlending,
+  Quaternion,
+  ShaderMaterial,
+  SphereGeometry,
+  Vector3,
+  Color,
+} from 'three';
+import { atmosphereShader, cloudShader, dustShader, earthShader, hazeShader } from './shaders';
+import { createEarthMaskTexture, latLonToVector, TASHKENT } from './earthMask';
+import styles from './HeroScene.module.css';
+
+const SUN_DIR = new Vector3(-0.85, 0.45, 0.65).normalize();
+const ATMOSPHERE_SCALE = 1.17;
+const TILT = 0.5; // tilt the northern hemisphere towards the camera
+const CAMERA_Z = 6;
+
+const QUALITY = {
+  high: { segments: 128, cloudSegments: 96, haze: 2600, dust: 1100, octaves: 5, mask: 2048, dpr: [1, 1.75] },
+  low: { segments: 72, cloudSegments: 56, haze: 900, dust: 380, octaves: 3, mask: 1024, dpr: [1, 1.25] },
+};
+
+// Deterministic PRNG so particle layouts are stable between renders.
+function mulberry32(seed) {
+  let a = seed;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function randomUnitVector(rand) {
+  const u = rand() * 2 - 1;
+  const theta = rand() * Math.PI * 2;
+  const s = Math.sqrt(1 - u * u);
+  return [s * Math.cos(theta), u, s * Math.sin(theta)];
+}
+
+function createHazeGeometry(count) {
+  const rand = mulberry32(7);
+  const positions = new Float32Array(count * 3);
+  const randoms = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    const [x, y, z] = randomUnitVector(rand);
+    const r = 1.025 + Math.pow(rand(), 1.7) * 0.5;
+    positions.set([x * r, y * r, z * r], i * 3);
+    randoms.set([rand(), rand(), rand()], i * 3);
+  }
+  const geo = new BufferGeometry();
+  geo.setAttribute('position', new BufferAttribute(positions, 3));
+  geo.setAttribute('aRand', new BufferAttribute(randoms, 3));
+  return geo;
+}
+
+function createDustGeometry(count) {
+  const rand = mulberry32(21);
+  const positions = new Float32Array(count * 3);
+  const randoms = new Float32Array(count * 2);
+  for (let i = 0; i < count; i++) {
+    const [x, y, z] = randomUnitVector(rand);
+    const r = 4 + rand() * 7;
+    // Keep the field behind the planet and well in front of the near plane.
+    positions.set([x * r, y * r * 0.7, z * r * 0.6 - 5], i * 3);
+    randoms.set([rand(), rand()], i * 2);
+  }
+  const geo = new BufferGeometry();
+  geo.setAttribute('position', new BufferAttribute(positions, 3));
+  geo.setAttribute('aRand', new BufferAttribute(randoms, 2));
+  return geo;
+}
+
+/** Position, scale and offset of the globe for the current canvas aspect ratio. */
+function useLayout() {
+  const viewport = useThree((s) => s.viewport);
+  const size = useThree((s) => s.size);
+  const aspect = size.width / Math.max(1, size.height);
+  if (aspect >= 1.15) {
+    return { x: viewport.width * 0.2, y: -viewport.height * 0.02, r: Math.min(viewport.height * 0.33, viewport.width * 0.21) };
+  }
+  if (aspect >= 0.8) {
+    return { x: viewport.width * 0.2, y: viewport.height * 0.14, r: viewport.height * 0.27 };
+  }
+  return { x: viewport.width * 0.24, y: viewport.height * 0.25, r: viewport.width * 0.5 };
+}
+
+function Globe({ quality, reduced, cleanTarget, scrollProgress, pointer }) {
+  const q = QUALITY[quality];
+  const layout = useLayout();
+  const invalidate = useThree((s) => s.invalidate);
+  const pixelRatio = useThree((s) => s.viewport.dpr);
+
+  const rootRef = useRef(null);
+  const spinRef = useRef(null);
+  const tiltRef = useRef(null);
+  const cloudsRef = useRef(null);
+  const pulseRef = useRef(null);
+  const state = useRef({ clean: reduced ? cleanTarget : 0, intro: reduced ? 1 : 0 });
+
+  const markerPos = useMemo(() => new Vector3(...latLonToVector(TASHKENT.lat, TASHKENT.lon, 1.004)), []);
+  const markerQuat = useMemo(
+    () => new Quaternion().setFromUnitVectors(new Vector3(0, 0, 1), markerPos.clone().normalize()),
+    [markerPos],
+  );
+  // Spin that brings Uzbekistan to face the camera, nudged slightly left.
+  const baseSpin = useMemo(() => -Math.atan2(markerPos.x, markerPos.z) - 0.22, [markerPos]);
+
+  const resources = useMemo(() => {
+    const mask = createEarthMaskTexture(q.mask);
+    const defines = { OCTAVES: q.octaves };
+    const earth = new ShaderMaterial({
+      ...earthShader,
+      defines,
+      uniforms: {
+        uMask: { value: mask },
+        uMaskReady: { value: mask ? 1 : 0 },
+        uTime: { value: 0 },
+        uClean: { value: 0 },
+        uSunDir: { value: SUN_DIR },
+      },
+    });
+    const clouds = new ShaderMaterial({
+      ...cloudShader,
+      defines,
+      transparent: t
+
+--- components/three/HeroVisual.js ---
+'use client';
+
+import { Component, useEffect, useMemo, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
+import { useInViewport } from '@/hooks/useInViewport';
+import { usePrefersReducedMotion } from '@/hooks/useMediaQuery';
+import { useIsClient } from '@/hooks/useIsClient';
+import styles from './HeroVisual.module.css';
+
+// The WebGL scene (three.js, R3F, map data) is code-split and client-only.
+const HeroScene = dynamic(() => import('./HeroScene'), { ssr: false, loading: () => null });
+
+let webglSupport = null;
+function hasWebGL() {
+  if (webglSupport !== null) return webglSupport;
+  try {
+    const canvas = document.createElement('canvas');
+    webglSupport = Boolean(canvas.getContext('webgl2') || canvas.getContext('webgl'));
+  } catch {
+    webglSupport = false;
+  }
+  return webglSupport;
+}
+
+/** Rough device tier: weaker devices get fewer particles and a lower pixel ratio. */
+function detectQuality() {
+  const small = window.matchMedia('(max-width: 767px)').matches;
+  const coarse = window.matchMedia('(pointer: coarse)').matches;
+  const cores = navigator.hardwareConcurrency || 4;
+  const memory = navigator.deviceMemory || 4;
+  return small || coarse || cores <= 4 || memory <= 4 ? 'low' : 'high';
+}
+
+/** Any error inside the WebGL tree falls back to the CSS globe, never breaks the page. */
+class SceneBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { failed: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch() {
+    this.props.onError?.();
+  }
+
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
+}
+
+export function HeroVisual({ cleanTarget, scrollProgress }) {
+  const containerRef = useRef(null);
+  const pointer = useRef({ x: 0, y: 0 });
+  const isClient = useIsClient();
+  const reduced = usePrefersReducedMotion();
+  const active = useInViewport(containerRef, { rootMargin: '0px' });
+  const [ready, setReady] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  const env = useMemo(
+    () => (isClient ? { webgl: hasWebGL(), quality: detectQuality() } : { webgl: false, quality: 'low' }),
+    [isClient],
+  );
+
+  // Pointer parallax (fine pointers only; touch devices keep the scene steady).
+  useEffect(() => {
+    if (!window.matchMedia('(pointer: fine)').matches) return undefined;
+    const onMove = (e) => {
+      pointer.current.x = (e.clientX / window.innerWidth) * 2 - 1;
+      pointer.current.y = (e.clientY / window.innerHeight) * 2 - 1;
+    };
+    window.addEventListener('pointermove', onMove, { passive: true });
+    return () => window.removeEventListener('pointermove', onMove);
+  }, []);
+
+  const showScene = env.webgl && !failed;
+
+  return (
+    <div
+      ref={containerRef}
+      className={styles.visual}
+      data-ready={(ready && showScene) || undefined}
+      role="img"
+      aria-label="Трёхмерная Земля, на которой подсвечен Узбекистан. Вокруг планеты — частицы дымки, которые рассеиваются, когда воздух становится чище."
+    >
+      <div className={styles.fallback} data-clean={cleanTarget > 0.5 || undefined} aria-hidden="true">
+        <div className={styles.fallbackGlow} />
+        <div className={styles.fallbackSphere}>
+          <span className={styles.fallbackDot} />
+        </div>
+      </div>
+      {showScene && (
+        <div className={styles.sceneLayer}>
+          <SceneBoundary onError={() => setFailed(true)}>
+            <HeroScene
+              quality={env.quality}
+              reduced={reduced}
+              active={active}
+              cleanTarget={cleanTarget}
+              scrollProgress={scrollProgress}
+              pointer={pointer}
+              onReady={() => setReady(true)}
+              onError={() => setFailed(true)}
+            />
+          </SceneBoundary>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+--- components/three/shaders.js (truncated) ---
+// GLSL for the hero globe. Colours are authored directly in display (sRGB)
+// space; the shaders intentionally skip three.js tone-mapping/colour-space
+// chunks so the palette matches the CSS design tokens.
+
+// 3D simplex noise — Ian McEwan, Ashima Arts (MIT licence).
+const NOISE = /* glsl */ `
+vec3 mod289(vec3 x){ return x - floor(x * (1.0 / 289.0)) * 289.0; }
+vec4 mod289(vec4 x){ return x - floor(x * (1.0 / 289.0)) * 289.0; }
+vec4 permute(vec4 x){ return mod289(((x * 34.0) + 1.0) * x); }
+vec4 taylorInvSqrt(vec4 r){ return 1.79284291400159 - 0.85373472095314 * r; }
+
+float snoise(vec3 v){
+  const vec2 C = vec2(1.0 / 6.0, 1.0 / 3.0);
+  const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+  vec3 i = floor(v + dot(v, C.yyy));
+  vec3 x0 = v - i + dot(i, C.xxx);
+  vec3 g = step(x0.yzx, x0.xyz);
+  vec3 l = 1.0 - g;
+  vec3 i1 = min(g.xyz, l.zxy);
+  vec3 i2 = max(g.xyz, l.zxy);
+  vec3 x1 = x0 - i1 + C.xxx;
+  vec3 x2 = x0 - i2 + C.yyy;
+  vec3 x3 = x0 - D.yyy;
+  i = mod289(i);
+  vec4 p = permute(permute(permute(
+            i.z + vec4(0.0, i1.z, i2.z, 1.0))
+          + i.y + vec4(0.0, i1.y, i2.y, 1.0))
+          + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+  float n_ = 0.142857142857;
+  vec3 ns = n_ * D.wyz - D.xzx;
+  vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+  vec4 x_ = floor(j * ns.z);
+  vec4 y_ = floor(j - 7.0 * x_);
+  vec4 x = x_ * ns.x + ns.yyyy;
+  vec4 y = y_ * ns.x + ns.yyyy;
+  vec4 h = 1.0 - abs(x) - abs(y);
+  vec4 b0 = vec4(x.xy, y.xy);
+  vec4 b1 = vec4(x.zw, y.zw);
+  vec4 s0 = floor(b0) * 2.0 + 1.0;
+  vec4 s1 = floor(b1) * 2.0 + 1.0;
+  vec4 sh = -step(h, vec4(0.0));
+  vec4 a0 = b0.xzyw + s0.xzyw * sh.xxyy;
+  vec4 a1 = b1.xzyw + s1.xzyw * sh.zzww;
+  vec3 p0 = vec3(a0.xy, h.x);
+  vec3 p1 = vec3(a0.zw, h.y);
+  vec3 p2 = vec3(a1.xy, h.z);
+  vec3 p3 = vec3(a1.zw, h.w);
+  vec4 norm = taylorInvSqrt(vec4(dot(p0, p0), dot(p1, p1), dot(p2, p2), dot(p3, p3)));
+  p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
+  vec4 m = max(0.6 - vec4(dot(x0, x0), dot(x1, x1), dot(x2, x2), dot(x3, x3)), 0.0);
+  m = m * m;
+  return 42.0 * dot(m * m, vec4(dot(p0, x0), dot(p1, x1), dot(p2, x2), dot(p3, x3)));
+}
+
+// Fractal noise in roughly [-1, 1]. OCTAVES is injected as a define so weaker
+// devices can use fewer octaves.
+float fbm(vec3 p){
+  float f = 0.0;
+  float a = 0.5;
+  for (int i = 0; i < OCTAVES; i++) {
+    f += a * snoise(p);
+    p = p * 2.03 + vec3(1.7, 9.2, 3.1);
+    a *= 0.5;
+  }
+  return f;
+}
+`;
+
+const SURFACE_VERTEX = /* glsl */ `
+varying vec2 vUv;
+varying vec3 vPosObj;
+varying vec3 vNormalW;
+varying vec3 vViewDirW;
+
+void main() {
+  vUv = uv;
+  vPosObj = position;
+  vec4 worldPos = modelMatrix * vec4(position, 1.0);
+  vNormalW = normalize(mat3(modelMatrix) * normal);
+  vViewDirW = normalize(cameraPosition - worldPos.xyz);
+  gl_Position = projectionMatrix * viewMatrix * worldPos;
+}
+`;
+
+export const earthShader = {
+  vertexShader: SURFACE_VERTEX,
+  fragmentShader: /* glsl */ `
+uniform sampler2D uMask;   // r: land, g: Uzbekistan, b: borders
+uniform float uMaskReady;
+uniform float uTime;
+uniform float uClean;      // 0 = hazy atmosphere, 1 = clean
+uniform vec3 uSunDir;
+
+varying vec2 vUv;
+varying vec3 vPosObj;
+varying vec3 vNormalW;
+varying vec3 vViewDirW;
+
+${NOISE}
+
+void main() {
+  vec3 n = normalize(vNormalW);
+  vec3 v = normalize(vViewDirW);
+  vec3 sun = normalize(uSunDir);
+
+  vec4 mask = texture2D(uMask, vUv);
+  // Until the geographic mask is ready, fall back to procedural continents.
+  float proceduralLand = smoothstep(0.08, 0.22, fbm(vPosObj * 1.4));
+  float land = mix(proceduralLand, mask.r, uMaskReady);
+  float uz = mask.g * uMaskReady;
+  float border = mask.b * uMaskReady;
+
+  float n1 = fbm(vPosObj * 3.2) * 0.5 + 0.5;
+  float n2 = fbm(vPosObj * 11.0 + 4.0) * 0.5 + 0.5;
+  float lat = abs(vPosObj.y);
+
+  vec3 ocean = mix(vec3(0.012, 0.058, 0.047), vec3(0.035, 0.13, 0.10), smoothstep(0.3, 0.85, n1));
+  vec3 landCol = mix(vec3(0.10, 0.24, 0.16), vec3(0.28, 0.46, 0.26), smoothstep(0.35, 0.78, n1));
+  // Drier belts in the subtropics/mid-latitudes, a stylised hint of deserts.
+  float aridBand = smoothstep(0.22, 0.38, lat) * (1.0 - smoothstep(0.66, 0.78, lat));
+  landCol = mix(landCol, vec3(0.55, 0.50, 0.34), aridBand * smoothstep(0.38, 0.72, n2) * 0.75);
+  float ice = smoothstep(0.87, 0.95, lat + (n2 - 0.5) * 0.08);
+
+  vec3 col = mix(ocean, landCol, land);
+  col = mix(col, vec3(0.80, 0.86, 0.83), ice);
+
+  vec3 lime = vec3(0.722, 0.953, 0.42);
+  col = mix(col, lime * 0.92, uz * 0.88);
+
+  float ndl = dot(n, sun);
+  float day = smoothstep(-0.2, 0.55, ndl);
+  vec3 lit = col * (0.14 + 1.08 * day);
+
+  // Soft specular glint on water.
+  vec3 h = normalize(sun + v);
+  float spec = pow(max(dot(n, h), 0.0), 48.0) * (1.0 - land) * day;
+  lit += vec3(0.62, 0.86, 0.72) * spec * 0.32;
+
+  lit += vec3(0.55, 0.80, 0.62) * border * 0.16 * (0.3 + day);
+
+  // Uzbekistan keeps a gentle glow even on the night side.
+  float pulse = 0.5 + 0.5 * sin(uTime * 1.6);
+  lit += lime * uz * (0.16 + 0.12 * pulse);
+
+  // Atmospheric rim inside the disc: dusty amber 
+
+--- components/ui/Button.js ---
+import styles from './Button.module.css';
+
+/**
+ * Button / link with consistent states (hover, focus, active, disabled, loading).
+ * Renders <a> when `href` is provided, otherwise <button>.
+ */
+export function Button({
+  href,
+  variant = 'primary',
+  size = 'md',
+  icon: Icon,
+  iconPosition = 'end',
+  loading = false,
+  block = false,
+  className = '',
+  children,
+  type = 'button',
+  disabled,
+  ...rest
+}) {
+  const cls = [
+    styles.btn,
+    styles[variant],
+    styles[size],
+    block ? styles.block : '',
+    !children ? styles.iconOnly : '',
+    loading ? styles.loading : '',
+    className,
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  const iconEl = loading ? (
+    <span className={styles.spinner} aria-hidden="true" />
+  ) : Icon ? (
+    <Icon
+      className={`${styles.icon} ${iconPosition === 'end' ? styles.iconEnd : styles.iconStart}`}
+      size={size === 'sm' ? 16 : 18}
+      strokeWidth={2}
+      aria-hidden="true"
+    />
+  ) : null;
+
+  const content = (
+    <>
+      {iconPosition === 'start' && iconEl}
+      {children && <span className={styles.label}>{children}</span>}
+      {iconPosition === 'end' && iconEl}
+    </>
+  );
+
+  if (href) {
+    return (
+      <a href={href} className={cls} {...rest}>
+        {content}
+      </a>
+    );
+  }
+
+  return (
+    <button
+      type={type}
+      className={cls}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
+      {...rest}
+    >
+      {content}
+    </button>
+  );
+}
+
+
+--- components/ui/ChoiceGroup.js ---
+'use client';
+
+import { useId } from 'react';
+import styles from './ChoiceGroup.module.css';
+
+/**
+ * Accessible single-choice group built on native radio inputs
+ * (arrow-key navigation and form semantics come for free).
+ */
+export function ChoiceGroup({ label, hint, options, value, onChange, size = 'md', hideLegend = false, className = '' }) {
+  const name = useId();
+  return (
+    <fieldset className={`${styles.group} ${className}`}>
+      <legend className={hideLegend ? 'sr-only' : styles.legend}>{label}</legend>
+      {hint && <p className={styles.hint}>{hint}</p>}
+      <div className={`${styles.options} ${styles[size] ?? ''}`}>
+        {options.map((opt) => {
+          const checked = opt.value === value;
+          const Icon = opt.icon;
+          return (
+            <label key={String(opt.value)} className={`${styles.option} ${checked ? styles.checked : ''}`}>
+              <input
+                type="radio"
+                className={styles.input}
+                name={name}
+                value={String(opt.value)}
+                checked={checked}
+                onChange={() => onChange(opt.value)}
+              />
+              {Icon && <Icon size={16} strokeWidth={2} aria-hidden="true" />}
+              <span>{opt.label}</span>
+              {typeof opt.count === 'number' && <span className={styles.count}>{opt.count}</span>}
+            </label>
+          );
+        })}
+      </div>
+    </fieldset>
+  );
+}
+
+
+--- components/ui/ConfirmDialog.js ---
+'use client';
+
+import { useId, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { AnimatePresence, motion } from 'motion/react';
+import { useDialogBehavior } from '@/hooks/useDialogBehavior';
+import { useIsClient } from '@/hooks/useIsClient';
+import { Button } from './Button';
+import styles from './ConfirmDialog.module.css';
+
+function DialogPanel({ title, description, confirmLabel, cancelLabel, onConfirm, onCancel, tone }) {
+  const panelRef = useRef(null);
+  const titleId = useId();
+  const descId = useId();
+  useDialogBehavior(panelRef, true, onCancel);
+
+  return (
+    <div className={styles.root}>
+      <motion.div
+        className={styles.overlay}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.2 }}
+        onClick={onCancel}
+        aria-hidden="true"
+      />
+      <motion.div
+        ref={panelRef}
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={descId}
+        tabIndex={-1}
+        className={`${styles.panel} theme-dark`}
+        initial={{ opacity: 0, y: 16, scale: 0.97 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 8, scale: 0.98 }}
+        transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+      >
+        <h2 id={titleId} className={styles.title}>
+          {title}
+        </h2>
+        <p id={descId} className={styles.text}>
+          {description}
+        </p>
+        <div className={styles.actions}>
+          <Button variant="secondary" onClick={onCancel} data-autofocus>
+            {cancelLabel}
+          </Button>
+          <Button variant={tone === 'danger' ? 'dangerSolid' : 'primary'} onClick={onConfirm}>
+            {confirmLabel}
+          </Button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+/** Confirmation dialog for destructive actions. Cancel is focused by default. */
+export function ConfirmDialog({ open, cancelLabel = 'Отмена', tone = 'danger', ...props }) {
+  const isClient = useIsClient();
+  if (!isClient) return null;
+  return createPortal(
+    <AnimatePresence>{open && <DialogPanel cancelLabel={cancelLabel} tone={tone} {...props} />}</AnimatePresence>,
+    document.body,
+  );
+}
+
+
+--- components/ui/Counter.js ---
+'use client';
+
+import { useEffect, useRef } from 'react';
+import { animate, useInView, useReducedMotion } from 'motion/react';
+import { formatNumber } from '@/lib/format';
+
+/** Number that counts up when it scrolls into view (instant with reduced motion). */
+export function Counter({ value, decimals = 0, duration = 1.4, className, suffix = '' }) {
+  const ref = useRef(null);
+  const inView = useInView(ref, { once: true, amount: 0.6 });
+  const reduce = useReducedMotion();
+  const shown = useRef(0);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const write = (v) => {
+      shown.current = v;
+      el.textContent = `${formatNumber(v, decimals)}${suffix}`;
+    };
+    if (!inView) return undefined;
+    if (reduce) {
+      write(value);
+      return undefined;
+    }
+    const controls = animate(shown.current, value, {
+      duration,
+      ease: [0.22, 1, 0.36, 1],
+      onUpdate: write,
+    });
+    return () => controls.stop();
+  }, [inView, value, decimals, duration, reduce, suffix]);
+
+  return (
+    <span ref={ref} className={className}>
+      {formatNumber(value, decimals)}
+      {suffix}
+    </span>
+  );
+}
+
+
+--- components/ui/ProgressRing.js ---
+import styles from './ProgressRing.module.css';
+
+/** Circular progress indicator. `value` is 0..1. */
+export function ProgressRing({ value, size = 180, stroke = 12, label, children }) {
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const clamped = Math.min(1, Math.max(0, value || 0));
+  return (
+    <div
+      className={styles.ring}
+      style={{ width: size, height: size }}
+      role="progressbar"
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(clamped * 100)}
+    >
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
+        <circle className={styles.track} cx={size / 2} cy={size / 2} r={r} strokeWidth={stroke} />
+        <circle
+          className={styles.bar}
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          strokeWidth={stroke}
+          strokeDasharray={c}
+          strokeDashoffset={c * (1 - clamped)}
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        />
+      </svg>
+      <div className={styles.center}>{children}</div>
+    </div>
+  );
+}
+
+
+--- components/ui/Reveal.js ---
+'use client';
+
+import { motion } from 'motion/react';
+
+const EASE = [0.22, 1, 0.36, 1];
+
+/** Fades and lifts content into view once. Reduced motion is handled by <MotionConfig>. */
+export function Reveal({ as = 'div', delay = 0, y = 26, amount = 0.2, className, children, ...rest }) {
+  const Comp = motion[as] ?? motion.div;
+  return (
+    <Comp
+      className={className}
+      initial={{ opacity: 0, y }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, amount, margin: '0px 0px -6% 0px' }}
+      transition={{ duration: 0.85, delay, ease: EASE }}
+      {...rest}
+    >
+      {children}
+    </Comp>
+  );
+}
+
+/**
+ * Heading whose words rise from a mask one after another.
+ * The animated copy is aria-hidden; screen readers get the plain text.
+ * `parts` is an array of { text, className } segments so styling can vary.
+ */
+export function SplitHeading({ as = 'h2', id, parts, className, delay = 0, stagger = 0.06, inView = true }) {
+  const Tag = as;
+  const plain = parts.map((p) => p.text).join(' ');
+  let index = 0;
+  const animateProps = inView
+    ? { whileInView: { y: '0%' }, viewport: { once: true, amount: 0.4 } }
+    : { animate: { y: '0%' } };
+
+  return (
+    <Tag id={id} className={className}>
+      <span className="sr-only">{plain}</span>
+      <span aria-hidden="true">
+        {parts.map((part, pi) => (
+          <span key={pi} className={part.className}>
+            {part.text.split(' ').map((word, wi) => {
+              const i = index++;
+              return (
+                <span
+                  key={wi}
+                  style={{ display: 'inline-block', overflow: 'hidden', verticalAlign: 'top', paddingBottom: '0.08em', marginBottom: '-0.08em' }}
+                >
+                  <motion.span
+                    style={{ display: 'inline-block', willChange: 'transform' }}
+                    initial={{ y: '105%' }}
+                    transition={{ duration: 0.9, delay: delay + i * stagger, ease: EASE }}
+                    {...animateProps}
+                  >
+                    {word}
+                  </motion.span>
+                  {' '}
+                </span>
+              );
+            })}
+            {part.breakAfter && <br />}
+          </span>
+        ))}
+      </span>
+    </Tag>
+  );
+}
+
+
+--- components/ui/SectionIntro.js ---
+import { Reveal } from './Reveal';
+import styles from './SectionIntro.module.css';
+
+/**
+ * Section heading block: numbered eyebrow, large title and an optional lead.
+ * `layout="split"` puts the lead in a second column on wide screens.
+ */
+export function SectionIntro({ index, eyebrow, title, lead, layout = 'stack', id, children, className = '' }) {
+  return (
+    <header className={`${styles.intro} ${styles[layout]} ${className}`}>
+      <Reveal className={styles.head}>
+        <p className={styles.eyebrow}>
+          {index && <span className={styles.index}>{index}</span>}
+          <span>{eyebrow}</span>
+        </p>
+        <h2 id={id} className={`t-h2 ${styles.title}`}>
+          {title}
+        </h2>
+      </Reveal>
+      {(lead || children) && (
+        <Reveal className={styles.side} delay={0.1}>
+          {lead && <p className="t-lead">{lead}</p>}
+          {children}
+        </Reveal>
+      )}
+    </header>
+  );
+}
+
+
+--- components/ui/Sheet.js ---
+'use client';
+
+import { useId, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { AnimatePresence, motion } from 'motion/react';
+import { X } from 'lucide-react';
+import { useDialogBehavior } from '@/hooks/useDialogBehavior';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { useIsClient } from '@/hooks/useIsClient';
+import styles from './Sheet.module.css';
+
+const EASE = [0.22, 1, 0.36, 1];
+
+function SheetPanel({ onClose, title, eyebrow, children, footer }) {
+  const panelRef = useRef(null);
+  const titleId = useId();
+  const isMobile = useMediaQuery('(max-width: 639px)');
+  useDialogBehavior(panelRef, true, onClose);
+
+  const offscreen = isMobile ? { y: '100%' } : { x: '100%' };
+
+  return (
+    <div className={styles.root}>
+      <motion.div
+        className={styles.overlay}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.25 }}
+        onClick={onClose}
+        aria-hidden="true"
+      />
+      <motion.div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className={`${styles.panel} theme-dark`}
+        initial={{ ...offscreen, opacity: 0.6 }}
+        animate={{ x: 0, y: 0, opacity: 1 }}
+        exit={{ ...offscreen, opacity: 0.6 }}
+        transition={{ duration: 0.42, ease: EASE }}
+      >
+        <header className={styles.header}>
+          <div>
+            {eyebrow && <p className="t-label">{eyebrow}</p>}
+            <h2 id={titleId} className={styles.title}>
+              {title}
+            </h2>
+          </div>
+          <button type="button" className={styles.close} onClick={onClose} aria-label="Закрыть">
+            <X size={20} aria-hidden="true" />
+          </button>
+        </header>
+        <div className={styles.body}>{children}</div>
+        {footer && <footer className={styles.footer}>{footer}</footer>}
+      </motion.div>
+    </div>
+  );
+}
+
+/** Side drawer on desktop, bottom sheet on mobile. */
+export function Sheet({ open, ...props }) {
+  const isClient = useIsClient();
+  if (!isClient) return null;
+  return createPortal(<AnimatePresence>{open && <SheetPanel {...props} />}</AnimatePresence>, document.body);
+}
+
+
+## Instructions
+
+Analyze the above codebase context and provide your response following the format specified in the task.

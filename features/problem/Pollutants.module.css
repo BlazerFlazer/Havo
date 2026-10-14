@@ -1,0 +1,136 @@
+.wrap {
+  display: grid;
+  gap: 20px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  background: var(--border-strong);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-l);
+  overflow: hidden;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 28px 24px 24px;
+  background: var(--surface-0);
+}
+
+.symbol {
+  font-size: clamp(3rem, 2rem + 2.6vw, 4.4rem);
+  line-height: 0.9;
+  font-weight: 700;
+  letter-spacing: -0.05em;
+  color: var(--fg);
+}
+
+.symbol sub {
+  font-size: 0.42em;
+  letter-spacing: -0.02em;
+  vertical-align: baseline;
+  position: relative;
+  bottom: -0.05em;
+  margin-left: 0.04em;
+  color: var(--accent-text);
+}
+
+.name {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.facts {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  flex: 1;
+}
+
+.facts dt {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+  margin-bottom: 3px;
+}
+
+.facts dd {
+  margin: 0;
+  font-size: 0.93rem;
+  line-height: 1.55;
+}
+
+.who {
+  padding: 14px 16px;
+  border-radius: var(--r-m);
+  background: var(--c-forest);
+  color: var(--c-paper);
+}
+
+.whoLabel {
+  margin-bottom: 8px;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--c-lime);
+}
+
+.who ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+}
+
+.who li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.86rem;
+  color: var(--c-muted);
+}
+
+.whoValue {
+  font-weight: 700;
+  color: var(--c-paper);
+  font-size: 0.95rem;
+}
+
+.unit {
+  font-weight: 500;
+  color: var(--c-muted);
+  font-size: 0.8rem;
+}
+
+.note {
+  max-width: 90ch;
+  font-size: 0.86rem;
+  line-height: 1.55;
+  color: var(--fg-muted);
+}
+
+.note a {
+  color: var(--fg);
+  font-weight: 650;
+}
+
+@media (max-width: 1099px) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 599px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

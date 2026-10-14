@@ -1,0 +1,157 @@
+.visual {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.sceneLayer {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 1400ms var(--ease-out);
+}
+
+.visual[data-ready] .sceneLayer {
+  opacity: 1;
+}
+
+/* Label that follows the Uzbekistan marker (positioned by the scene). */
+.label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  opacity: 0;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+.labelLine {
+  width: 44px;
+  height: 1px;
+  margin-left: 10px;
+  background: linear-gradient(90deg, rgba(233, 255, 208, 0.9), rgba(233, 255, 208, 0.2));
+}
+
+.label[data-flip='true'] {
+  flex-direction: row-reverse;
+}
+
+.label[data-flip='true'] .labelLine {
+  margin-left: 0;
+  margin-right: 10px;
+  background: linear-gradient(270deg, rgba(233, 255, 208, 0.9), rgba(233, 255, 208, 0.2));
+}
+
+.labelBody {
+  display: grid;
+  gap: 1px;
+  padding: 5px 10px 6px;
+  border: 1px solid rgba(184, 243, 107, 0.3);
+  border-radius: 8px;
+  background: rgba(7, 19, 15, 0.72);
+  backdrop-filter: blur(6px);
+  white-space: nowrap;
+  transform: translateY(0);
+}
+
+.labelName {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--c-paper);
+}
+
+.labelCoords {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--c-lime);
+}
+
+/* ── CSS globe: loading state and static fallback ── */
+.fallback {
+  position: absolute;
+  top: 50%;
+  left: 70%;
+  width: min(66vh, 42vw);
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  transition: opacity 900ms var(--ease-out);
+}
+
+.visual[data-ready] .fallback {
+  opacity: 0;
+}
+
+.fallbackGlow {
+  position: absolute;
+  inset: -12%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(242, 180, 90, 0.18) 45%, transparent 70%);
+  transition: background 1200ms var(--ease-out);
+}
+
+.fallback[data-clean] .fallbackGlow {
+  background: radial-gradient(circle, rgba(93, 187, 131, 0.22) 45%, transparent 70%);
+}
+
+.fallbackSphere {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 30% 28%, rgba(184, 243, 107, 0.16), transparent 42%),
+    radial-gradient(ellipse 30% 22% at 38% 40%, rgba(70, 120, 78, 0.9), transparent 70%),
+    radial-gradient(ellipse 26% 30% at 62% 58%, rgba(60, 108, 70, 0.85), transparent 70%),
+    radial-gradient(ellipse 18% 12% at 30% 66%, rgba(62, 110, 72, 0.7), transparent 70%),
+    radial-gradient(circle at 40% 40%, #123a2b 0%, #0b2419 45%, #050f0b 78%);
+  box-shadow:
+    inset -40px -50px 90px rgba(0, 0, 0, 0.75),
+    inset 12px 12px 40px rgba(184, 243, 107, 0.08),
+    0 0 0 1px rgba(184, 243, 107, 0.08);
+  animation: breathe 6s var(--ease-in-out) infinite alternate;
+}
+
+.fallbackDot {
+  position: absolute;
+  top: 36%;
+  left: 47%;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--c-lime);
+  box-shadow: 0 0 0 6px rgba(184, 243, 107, 0.18), 0 0 24px rgba(184, 243, 107, 0.6);
+}
+
+@keyframes breathe {
+  from {
+    filter: brightness(0.95);
+  }
+
+  to {
+    filter: brightness(1.08);
+  }
+}
+
+@media (max-aspect-ratio: 23/20) {
+  .fallback {
+    left: 72%;
+    top: 26%;
+    width: min(100vw, 62vh);
+  }
+}
+
+@media (max-width: 767px) {
+  .label {
+    display: none;
+  }
+
+  .fallback {
+    left: 74%;
+    top: 22%;
+    width: 104vw;
+  }
+}

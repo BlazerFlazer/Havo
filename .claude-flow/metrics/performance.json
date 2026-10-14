@@ -1,0 +1,83 @@
+{
+  "timestamp": "2026-10-14T12:23:41.440Z",
+  "mode": "headless",
+  "workerType": "optimize",
+  "model": "sonnet",
+  "durationMs": 161343,
+  "executionId": "optimize_1791980460097_6ehen2",
+  "success": true,
+  "findings": {
+    "sections": [
+      {
+        "title": "Analysis Summary",
+        "content": "\nThis is a Next.js 16 / React 19 app (no database — it's a static content + localStorage site), so classic SQL N+1 patterns don't apply. I found the client-side equivalent instead: repeated O(n) lookups inside loops, plus real re-render and memory issues in the store layer and canvas/WebGL code.\n\n",
+        "level": 2
+      },
+      {
+        "title": "1. \"N+1-style\" redundant computations",
+        "content": "\n**`features/actions/ActionLibrary.js:103`** — `ACTIONS.indexOf(action)` runs a linear scan of the full catalogue for *every visible card*, every render:\n```js\n{visible.map((action) => (\n  <ActionCard key={action.id} action={action} index={ACTIONS.indexOf(action)} />\n))}\n```\nFix — get the index for free from the map:\n```js\n{visible.map((action, index) => (\n  <ActionCard key={action.id} action={action} index={index} />\n))}\n```\n(If you need the original catalogue position rather than the filtered position, precompute a `Map(action.id -> index)` once at module scope instead.)\n\n**`features/actions/ActionFinder.js:124`** — `JSON.stringify(submitted)` is recomputed inside the `.map()` callback, once per result item, even though `submitted` doesn't change between items:\n```js\nkey={`${action.id}-${JSON.stringify(submitted)}`}\n```\nFix: compute `const submittedKey = JSON.stringify(submitted)` once above the `.map()`.\n\n**`features/actions/ActionFinder.js:29`** — `recommendActions(submitted)` (an O(n) scan + sort over all 27 actions) runs on *every* render of the component, including re-renders triggered by answer changes that don't touch `submitted`:\n```js\nconst results = submitted ? recommendActions(submitted) : null;\n```\nFix:\n```js\nconst results = useMemo(() => (submitted ? recommendActions(submitted) : null), [submitted]);\n```\n\n**`features/progress/progress.js` / `ProgressDashboard.js`** — `computeStreak(history)` is called twice per render: once directly in `Stats` (`ProgressDashboard.js:55`) and again inside the `\"steady\"` badge's `progress()` function (`progress.js:351`), each rebuilding a `Set` and walking it. `computeBadges` also runs 5+ separate `.filter()` passes over `state.history` (one per badge). None of this is memoized against `state`, so it reruns on every store emit — including emits for completely unrelated slices (e.g. toggling a checklist). Fix: wrap the derived values in `useMemo` keyed on the specific slices they read (`state.history`, `state.plan`, etc.), and have `computeBadges` reuse one `computeStreak` result instead of recomputing it per badge.\n\n",
+        "level": 3
+      },
+      {
+        "title": "2. Unnecessary React re-renders",
+        "content": "\nThe biggest structural issue: **`useHavoState()` (`features/progress/store.js:106`) has no selector — it returns the entire state tree**, and `useSyncExternalStore` re-renders every subscriber on *any* dispatch, regardless of which slice changed.\n\nConcretely:\n- **`AddToPlanButton.js:14`** calls `useHavoState()` just to read `isInPlan(state, ...)`. It's rendered once per catalogue item — up to 27 times in `ActionLibrary`, plus more in `ActionFinder` results and `InitiativeList`. Toggling a checklist box, adjusting the weekly goal, or submitting the quiz re-renders *every single one* of these buttons across the page, even though none of their data changed.\n- **`features/initiatives/InitiativeList.js:14`** (`Checklist`) and **`features/quiz/Quiz.js:30`** have the same problem — full-state subscription for a tiny slice.\n- **`components/layout/Header.js:20`** (`PlanLink`) is slightly better isolated (own component), but still re-renders on unrelated state changes (e.g. quiz completion).\n\nFix — add selector support to the store so consumers only re-render when their slice actually changes:\n```js\n// store.js\nexport function useHavoSelector(selector, isEqual = Object.is) {\n  const getSnapshot = useCallback(() => selector(getSnapshot_internal()), [selector]);\n  return useSyncExternalStore(subscribe, getSnapshot, () => selector(INITIAL_STATE));\n}\n```\nOr more simply, since `useSyncExternalStore` doesn't dedupe by itself, memoize the selected value and use `useSyncExternalStoreWithSelector` from `use-sync-external-store/shallow`:\n```js\nimport { useSyncExternalStoreWithSelector } from 'use-sync-external-store/with-selector';\n\nexport function useHavoState(selector = (s) => s, equalityFn) {\n  return useSyncExternalStoreWithSelector(subscribe, getSnapshot, getServerSnapshot, selector, equalityFn);\n}\n```\nThen `AddToPlanButton` becomes:\n```js\nconst added = useHavoState((s) => isInPlan(s, item.kind, item.refId));\n```\nThis alone would eliminate the majority of avoidable re-renders in the app, since it's used on nearly every interactive page section.\n\n",
+        "level": 3
+      },
+      {
+        "title": "3. Caching opportunities",
+        "content": "\n- **`app/api/air-quality/route.js`** already does the right thing server-side (`next: { revalidate: AIR_QUALITY.revalidateSeconds }`, 900s), but the response itself is sent with `Cache-Control: no-store` (line 13) — meaning *every* client tab that mounts `AirDashboard` triggers a fresh request to your Next.js route (which then may or may not hit the upstream fetch cache). Since the data only changes every 15 min, you could set a short `s-maxage`/`stale-while-revalidate` on the response so repeat visits within the window skip the round trip entirely:\n  ```js\n  const json = (body, status = 200) =>\n    Response.json(body, { status, headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600' } });\n  ```\n  (Keep `no-store` only for the error/unconfigured branches if you don't want those cached.)\n- **`features/actions/ActionLibrary.js:16-28`** (`CATEGORY_OPTIONS`, `EFFECT_OPTIONS`) are already correctly computed once at module scope rather than per-render — good pattern, worth keeping as the model for other derived constants.\n- `config/dataSources.js`'s `getSource(id)` and `data/actions.js` lookups are fine given array sizes (<30 items); no caching needed there.\n\n",
+        "level": 3
+      },
+      {
+        "title": "4. Memory leaks",
+        "content": "\nGood news: most canvas/WebGL/observer code is already careful. `AtmosphereField.js`, `InversionLab.js`, and `HeroScene.js`'s `Globe` component all correctly cancel `requestAnimationFrame`, disconnect `ResizeObserver`, remove event listeners, and dispose Three.js geometries/materials on cleanup (`HeroScene.js:220-225`).\n\nOne real risk:\n- **`components/three/HeroScene.js:367-372`** — `gl.domElement.addEventListener('webglcontextlost', ...)` inside `onCreated` is never removed. `onCreated` fires once per canvas mount, and the canvas itself is destroyed when `<Canvas>` unmounts, so the listener *should* be GC'd with the DOM node — but if `HeroVisual`'s `SceneBoundary` catches an error and remounts the scene (quality switch via `key={quality}` at `HeroScene.js:386`), each remount's `gl.domElement` is a fresh node so this is actually fine. Low priority, but worth adding a stored reference + explicit `removeEventListener` in a cleanup if you ever add manual remount logic elsewhere, since silent accumulation here would be hard to spot.\n\nNo `setInterval`/`setTimeout` leaks found outside `toast.js`, which correctly clears its timer before setting a new one (`toast.js:17`).\n\n",
+        "level": 3
+      },
+      {
+        "title": "5. Quick-win priority list",
+        "content": "| Fix | File:line | Effort |\n|---|---|---|\n| Add selector to `useHavoState`, use it in `AddToPlanButton` | `store.js:106`, `AddToPlanButton.js:14` | Medium, highest impact |\n| Memoize `recommendActions` call | `ActionFinder.js:29` | Trivial |\n| Replace `ACTIONS.indexOf(action)` with map index | `ActionLibrary.js:103` | Trivial |\n| Hoist `JSON.stringify(submitted)` out of `.map()` | `ActionFinder.js:124` | Trivial |\n| Memoize `computeBadges`/`computeStreak`/`planStats` in `ProgressDashboard` | `ProgressDashboard.js:52-56`, `progress.js:351` | Small |\n| Add `s-maxage`/SWR to air-quality API response | `route.js:13` | Trivial |\n\nThe store-selector fix is the one actually worth spending time on — everything else is cheap and localized, but the monolithic `useHavoState()` subscription is the pattern most likely to cause visible jank as the app grows (e.g. more actions, longer history).",
+        "level": 3
+      }
+    ],
+    "codeBlocks": [
+      {
+        "language": "js",
+        "code": "{visible.map((action) => (\n  <ActionCard key={action.id} action={action} index={ACTIONS.indexOf(action)} />\n))}"
+      },
+      {
+        "language": "js",
+        "code": "{visible.map((action, index) => (\n  <ActionCard key={action.id} action={action} index={index} />\n))}"
+      },
+      {
+        "language": "js",
+        "code": "key={`${action.id}-${JSON.stringify(submitted)}`}"
+      },
+      {
+        "language": "js",
+        "code": "const results = submitted ? recommendActions(submitted) : null;"
+      },
+      {
+        "language": "js",
+        "code": "const results = useMemo(() => (submitted ? recommendActions(submitted) : null), [submitted]);"
+      },
+      {
+        "language": "js",
+        "code": "// store.js\nexport function useHavoSelector(selector, isEqual = Object.is) {\n  const getSnapshot = useCallback(() => selector(getSnapshot_internal()), [selector]);\n  return useSyncExternalStore(subscribe, getSnapshot, () => selector(INITIAL_STATE));\n}"
+      },
+      {
+        "language": "js",
+        "code": "import { useSyncExternalStoreWithSelector } from 'use-sync-external-store/with-selector';\n\nexport function useHavoState(selector = (s) => s, equalityFn) {\n  return useSyncExternalStoreWithSelector(subscribe, getSnapshot, getServerSnapshot, selector, equalityFn);\n}"
+      },
+      {
+        "language": "js",
+        "code": "const added = useHavoState((s) => isInPlan(s, item.kind, item.refId));"
+      },
+      {
+        "language": "js",
+        "code": "const json = (body, status = 200) =>\n    Response.json(body, { status, headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600' } });"
+      }
+    ]
+  },
+  "rawOutputPreview": "## Analysis Summary\n\nThis is a Next.js 16 / React 19 app (no database — it's a static content + localStorage site), so classic SQL N+1 patterns don't apply. I found the client-side equivalent instead: repeated O(n) lookups inside loops, plus real re-render and memory issues in the store layer and canvas/WebGL code.\n\n### 1. \"N+1-style\" redundant computations\n\n**`features/actions/ActionLibrary.js:103`** — `ACTIONS.indexOf(action)` runs a linear scan of the full catalogue for *every visible card*, every render:\n```js\n{visible.map((action) => (\n  <ActionCard key={action.id} action={action} index={ACTIONS.indexOf(action)} />\n))}\n```\nFix — get the index for free from the map:\n```js\n{visible.map((action, index) => (\n  <ActionCard key={action.id} action={action} index={index} />\n))}\n```\n(If you need the original catalogue position rather than the filtered position, precompute a `Map(action.id -> index)` once at module scope instead.)\n\n**`features/actions/ActionFinder.js:124`** — `JSON.stringify(submitted)` is recomputed inside the `.map()` callback, once per result item, even though `submitted` doesn't change between items:\n```js\nkey={`${action.id}-${JSON.stringify(submitted)}`}\n```\nFix: compute `const submittedKey = JSON.stringify(submitted)` once above the `.map()`.\n\n**`features/actions/ActionFinder.js:29`** — `recommendActions(submitted)` (an O(n) scan + sort over all 27 actions) runs on *every* render of the component, including re-renders triggered by answer changes that don't touch `submitted`:\n```js\nconst results = submitted ? recommendActions(submitted) : null;\n```\nFix:\n```js\nconst results = useMemo(() => (submitted ? recommendActions(submitted) : null), [submitted]);\n```\n\n**`features/progress/progress.js` / `ProgressDashboard.js`** — `computeStreak(history)` is called twice per render: once directly in `Stats` (`ProgressDashboard.js:55`) and again inside the `\"steady\"` badge's `progress()` function (`progress.js:351`), each rebuilding a `Set` and walking it. `compu",
+  "rawOutputLength": 7918
+}

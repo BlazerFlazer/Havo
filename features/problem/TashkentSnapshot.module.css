@@ -1,0 +1,146 @@
+.wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: clamp(32px, 5vw, 96px);
+  padding: clamp(28px, 4vw, 56px) 0;
+  border-top: 1px solid var(--border-strong);
+  border-bottom: 1px solid var(--border);
+}
+
+.headline {
+  display: grid;
+  align-content: start;
+  gap: 18px;
+}
+
+.big {
+  display: flex;
+  align-items: baseline;
+  font-size: clamp(5.5rem, 3rem + 9vw, 12rem);
+  line-height: 0.85;
+  font-weight: 700;
+  letter-spacing: -0.06em;
+  color: var(--fg);
+}
+
+.gt {
+  font-size: 0.42em;
+  font-weight: 500;
+  color: var(--fg-muted);
+  margin-right: 0.08em;
+  align-self: center;
+}
+
+.times {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 500;
+  color: var(--accent-text);
+  margin-left: 0.04em;
+}
+
+.caption {
+  max-width: 36ch;
+  font-size: var(--fs-lead);
+  line-height: 1.5;
+  color: var(--fg);
+}
+
+.chart {
+  display: grid;
+  align-content: start;
+  gap: 18px;
+}
+
+.chartTitle {
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+
+.bars {
+  display: grid;
+  gap: 18px;
+  margin: 0;
+  padding: 0;
+}
+
+.bar {
+  display: grid;
+  gap: 8px;
+}
+
+.barHead {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  font-weight: 650;
+}
+
+.barValue {
+  font-size: 1.05rem;
+}
+
+.track {
+  height: 10px;
+  border-radius: 99px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--c-forest);
+  transform-origin: 0 50%;
+}
+
+.bar:first-child .fill {
+  background: var(--c-green-deep);
+}
+
+.barNote {
+  font-size: 0.84rem;
+  color: var(--fg-muted);
+}
+
+.source {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 12px 32px;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  color: var(--fg-muted);
+}
+
+.source > span {
+  max-width: 80ch;
+}
+
+.link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  font-weight: 700;
+  color: var(--fg);
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  transition: text-decoration-color var(--dur) var(--ease-out);
+}
+
+.link:hover {
+  text-decoration-color: currentColor;
+}
+
+@media (max-width: 899px) {
+  .wrap {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

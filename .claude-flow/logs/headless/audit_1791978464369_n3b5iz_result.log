@@ -1,0 +1,70 @@
+[2026-10-14T11:48:45.310Z] RESULT
+============================================================
+{
+  "success": true,
+  "output": "Based on my analysis of the codebase, here's a comprehensive security assessment:\n\n```json\n{\n  \"vulnerabilities\": [\n    {\n      \"severity\": \"medium\",\n      \"file\": \"app/api/air-quality/route.js\",\n      \"line\": 23,\n      \"description\": \"API token passed as URL parameter instead of Authorization header. This exposes the token in server logs, browser history, and proxy logs. Tokens should be transmitted via HTTP headers.\"\n    },\n    {\n      \"severity\": \"medium\",\n      \"file\": \"app/api/air-quality/route.js\",\n      \"line\": 14,\n      \"description\": \"No rate limiting on the /api/air-quality endpoint. Malicious actors could make unlimited requests, causing DoS or consuming API quota.\"\n    },\n    {\n      \"severity\": \"low\",\n      \"file\": \"app/api/air-quality/route.js\",\n      \"line\": 18,\n      \"description\": \"Information disclosure: Returns { status: 'unconfigured' } which reveals that no API token is configured. This leaks system configuration state.\"\n    },\n    {\n      \"severity\": \"medium\",\n      \"file\": \"app/api/air-quality/route.js\",\n      \"line\": 15,\n      \"description\": \"Insufficient input validation for 'city' parameter. While getCityById() should validate, there's no explicit validation shown in this handler. Unvalidated input should be checked before use.\"\n    },\n    {\n      \"severity\": \"low\",\n      \"file\": \"app/api/air-quality/route.js\",\n      \"line\": 23,\n      \"description\": \"SSRF risk: The endpoint URL from AIR_QUALITY config is not validated. While config-sourced, adding validation to ensure it's an HTTPS URL would be defensive.\"\n    },\n    {\n      \"severity\": \"medium\",\n      \"file\": \"next.config.mjs\",\n      \"line\": 7,\n      \"description\": \"Missing security headers configuration. No Content-Security-Policy, X-Frame-Options, X-Content-Type-Options, or other protective headers configured.\"\n    },\n    {\n      \"severity\": \"low\",\n      \"file\": \"components/layout/Header.js\",\n      \"line\": 73,\n      \"description\": \"Mobile menu accessibility: Pointer leave handler moves focus marker off-screen (-9999). Consider using visibility: hidden or display: none instead for better accessibility.\"\n    }\n  ],\n  \"riskScore\": 28,\n  \"recommendations\": [\n    \"Move WAQI API token from URL parameter to Authorization header: use `headers: { Authorization: 'Bearer ' + token }` instead\",\n    \"Implement rate limiting on the /api/air-quality endpoint using middleware (e.g., next-rate-limit or similar)\",\n    \"Add security headers in next.config.mjs via headers() export, including CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy\",\n    \"Add explicit input validation for city parameter (whitelist check or schema validation) before passing to getCityById()\",\n    \"Consider returning generic error for missing token instead of 'unconfigured' status to avoid leaking configuration state\",\n    \"Use HTTPS-enforcing strategies at deployment level (Vercel auto-HTTPS, Nginx redirect, or similar)\",\n    \"Add request timeout and cancellation token support (already has timeout on line 22, good practice)\",\n    \"Validate that external API endpoints are HTTPS only before making requests\",\n    \"Keep dependency versions current - no security issues detected in current dependencies, but maintain regular updates\"\n  ]\n}\n```\n\n**Summary:** The codebase is relatively secure with no critical vulnerabilities. The main concern is the **API token passed as URL parameter** (line 23 in air-quality route), which should be moved to HTTP headers. Secondary issues include missing rate limiting, absent security headers configuration, and minor information disclosure. The application handles XSS, SQL injection, and dependency risks well.\n",
+  "parsedOutput": {
+    "vulnerabilities": [
+      {
+        "severity": "medium",
+        "file": "app/api/air-quality/route.js",
+        "line": 23,
+        "description": "API token passed as URL parameter instead of Authorization header. This exposes the token in server logs, browser history, and proxy logs. Tokens should be transmitted via HTTP headers."
+      },
+      {
+        "severity": "medium",
+        "file": "app/api/air-quality/route.js",
+        "line": 14,
+        "description": "No rate limiting on the /api/air-quality endpoint. Malicious actors could make unlimited requests, causing DoS or consuming API quota."
+      },
+      {
+        "severity": "low",
+        "file": "app/api/air-quality/route.js",
+        "line": 18,
+        "description": "Information disclosure: Returns { status: 'unconfigured' } which reveals that no API token is configured. This leaks system configuration state."
+      },
+      {
+        "severity": "medium",
+        "file": "app/api/air-quality/route.js",
+        "line": 15,
+        "description": "Insufficient input validation for 'city' parameter. While getCityById() should validate, there's no explicit validation shown in this handler. Unvalidated input should be checked before use."
+      },
+      {
+        "severity": "low",
+        "file": "app/api/air-quality/route.js",
+        "line": 23,
+        "description": "SSRF risk: The endpoint URL from AIR_QUALITY config is not validated. While config-sourced, adding validation to ensure it's an HTTPS URL would be defensive."
+      },
+      {
+        "severity": "medium",
+        "file": "next.config.mjs",
+        "line": 7,
+        "description": "Missing security headers configuration. No Content-Security-Policy, X-Frame-Options, X-Content-Type-Options, or other protective headers configured."
+      },
+      {
+        "severity": "low",
+        "file": "components/layout/Header.js",
+        "line": 73,
+        "description": "Mobile menu accessibility: Pointer leave handler moves focus marker off-screen (-9999). Consider using visibility: hidden or display: none instead for better accessibility."
+      }
+    ],
+    "riskScore": 28,
+    "recommendations": [
+      "Move WAQI API token from URL parameter to Authorization header: use `headers: { Authorization: 'Bearer ' + token }` instead",
+      "Implement rate limiting on the /api/air-quality endpoint using middleware (e.g., next-rate-limit or similar)",
+      "Add security headers in next.config.mjs via headers() export, including CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy",
+      "Add explicit input validation for city parameter (whitelist check or schema validation) before passing to getCityById()",
+      "Consider returning generic error for missing token instead of 'unconfigured' status to avoid leaking configuration state",
+      "Use HTTPS-enforcing strategies at deployment level (Vercel auto-HTTPS, Nginx redirect, or similar)",
+      "Add request timeout and cancellation token support (already has timeout on line 22, good practice)",
+      "Validate that external API endpoints are HTTPS only before making requests",
+      "Keep dependency versions current - no security issues detected in current dependencies, but maintain regular updates"
+    ]
+  },
+  "durationMs": 60941,
+  "model": "haiku",
+  "sandboxMode": "strict",
+  "workerType": "audit",
+  "timestamp": "2026-10-14T11:48:45.310Z",
+  "executionId": "audit_1791978464369_n3b5iz"
+}

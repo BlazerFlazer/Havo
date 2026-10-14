@@ -1,0 +1,37 @@
+.section {
+  background:
+    radial-gradient(40% 30% at 90% 0%, rgba(93, 187, 131, 0.08), transparent 70%),
+    var(--surface-0);
+}
+
+.section :global(#library) {
+  scroll-margin-top: 24px;
+}
+
+.effects {
+  display: grid;
+  gap: 8px;
+  margin: 4px 0 0;
+  padding: 0;
+  font-size: 0.86rem;
+  line-height: 1.45;
+  color: var(--fg-muted);
+}
+
+.effects li {
+  display: flex;
+  gap: 10px;
+}
+
+.effects strong {
+  color: var(--fg);
+  font-weight: 650;
+}
+
+.dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-top: 0.45em;
+  border-radius: 50%;
+}

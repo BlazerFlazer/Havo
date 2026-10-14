@@ -1,0 +1,44 @@
+.svg {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.axis {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+
+.side {
+  fill: #3f8a52;
+}
+
+.top {
+  fill: #e4ffc2;
+}
+
+.ghost polygon {
+  fill: rgba(184, 243, 107, 0.16);
+  stroke: rgba(184, 243, 107, 0.55);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.label {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  fill: var(--fg-muted);
+}
+
+.value {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 700;
+  fill: var(--fg);
+}
+
+.caption {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  fill: var(--fg-subtle);
+}

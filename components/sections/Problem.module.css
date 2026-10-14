@@ -1,0 +1,25 @@
+.section {
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  margin-top: -1px;
+}
+
+.honesty {
+  display: inline-flex;
+  max-width: 54ch;
+  padding: 12px 16px;
+  border-radius: var(--r-m);
+  background: var(--surface-1);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--fg);
+}
+
+.gap {
+  margin-top: 20px;
+}
+
+.block {
+  margin-top: clamp(80px, 9vw, 140px);
+  padding-top: clamp(40px, 5vw, 72px);
+  border-top: 1px solid var(--border-strong);
+}

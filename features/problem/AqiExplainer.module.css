@@ -1,0 +1,157 @@
+.wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  grid-template-areas:
+    'head scales'
+    'check scales'
+    'check national';
+  gap: 28px 64px;
+}
+
+.head {
+  grid-area: head;
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
+
+.scales {
+  grid-area: scales;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.scale {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: 22px;
+  border-radius: var(--r-l);
+  background: var(--surface-0);
+  border: 1px solid var(--border);
+}
+
+.scaleTitle {
+  font-weight: 750;
+  font-size: 1rem;
+}
+
+.scaleUnit {
+  font-size: 0.84rem;
+  color: var(--fg-muted);
+  margin-bottom: 10px;
+}
+
+.ladder {
+  display: grid;
+  gap: 2px;
+  margin: 0 0 10px;
+  padding: 0;
+}
+
+.ladder li {
+  display: grid;
+  grid-template-columns: 10px 64px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+
+.swatch {
+  width: 10px;
+  height: 28px;
+  border-radius: 3px;
+}
+
+.range {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--fg-muted);
+}
+
+.catLabel {
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.source {
+  font-size: 0.8rem;
+  color: var(--fg-muted);
+  font-weight: 600;
+}
+
+.national {
+  grid-area: national;
+  padding: 16px 18px;
+  border-radius: var(--r-m);
+  background: var(--warn-soft);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.national a {
+  font-weight: 700;
+  color: var(--fg);
+}
+
+.checklist {
+  grid-area: check;
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+.checklist ol {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+}
+
+.checklist li {
+  display: flex;
+  gap: 14px;
+}
+
+.qNum {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--c-forest);
+  color: var(--c-lime);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
+.qTitle {
+  font-weight: 700;
+}
+
+.qText {
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: var(--fg-muted);
+}
+
+@media (max-width: 1099px) {
+  .wrap {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'head'
+      'scales'
+      'national'
+      'check';
+  }
+}
+
+@media (max-width: 639px) {
+  .scales {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
